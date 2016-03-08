@@ -270,14 +270,13 @@ def main():
 
 	# Datasets
 
-	#image_directory = "/home/brenna/Documents/101_ObjectCategories"
-	image_directory = "../Datasets/Caltech-101/101_ObjectCategories"
+	image_directory = "Caltech-101/101_ObjectCategories"
 
 	k_neighbors = 5
 	
 	#create and save new array of descriptors
 	#descriptor_list = run_on_all_images(flatten_daisy,image_directory, 100)
-	descriptor_list = run_on_all_images(get_hog_descriptor,image_directory, 1000)
+	descriptor_list = run_on_all_images(get_hog_descriptor,image_directory, 100)
 	#f = open('/home/brenna/Documents/descriptors', 'w')
 	descriptor_array = np.array(descriptor_list)
 	#np.save(f,descriptor_array)
