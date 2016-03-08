@@ -276,16 +276,16 @@ def main():
 	
 	#create and save new array of descriptors
 	#descriptor_list = run_on_all_images(flatten_daisy,image_directory, 100)
-	descriptor_list = run_on_all_images(get_hog_descriptor,image_directory, 100)
-	#f = open('/home/brenna/Documents/descriptors', 'w')
+	descriptor_list = run_on_all_images(get_hog_descriptor, image_directory, 10)
+	f = open('hog_descriptors', 'w')
 	descriptor_array = np.array(descriptor_list)
-	#np.save(f,descriptor_array)
-	#f.close()'''
+	np.save(f,descriptor_array)
+	f.close()
  	
  	#load previously-made array of descriptors
-	'''f = open('/home/brenna/Documents/descriptors', 'r')
+	f = open('hog_descriptors', 'r')
 	descriptor_array = np.load(f)
-	f.close()'''
+	f.close()
 
 	#print(hog_image.target)
 	#digits = load_digits()
@@ -304,15 +304,22 @@ def main():
 
 	#TODO: Doesn't this need to be hierarchical?
 	neigh = NearestNeighbors(n_neighbors=k_neighbors)
-	neigh.fit(dictionary)
+	neigh = neigh.fit(dictionary)
 
 	#testing encoding on 1 descriptor
-	xi=descriptor_array[1].reshape(1,-1)
+	xi = descriptor_array[1].reshape(1,-1)
 	bi = find_local_basis(xi, neigh, dictionary)
 	ci = np.linalg.lstsq(np.transpose(bi),np.transpose(xi))[0] #k-length encoding
 	err= np.linalg.lstsq(np.transpose(bi),np.transpose(xi))[1]
-	print(ci)
-	print(err)
+	
+	print("Descriptor for x_i: ")
+	describe_array(xi)
+	print("Base for x_i: ")
+	describe_array(bi)
+	print("Code for x_i: ")
+	describe_array(ci)
+	print("Error for x_i: ")
+	describe_array(err)
 
 
 if __name__ == '__main__':
