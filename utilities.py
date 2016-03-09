@@ -60,6 +60,14 @@ def save_descriptor_array(descriptor_array, filename, samples_per_class, max_tot
 	np.save(f, descriptor_array)
 	f.close()
 
+def save_encodings(encodings, filename, samples_per_class, max_total_images, number_of_k_means_clusters):
+
+	filename = filename + "_" + str(samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters)
+
+	f = open(filename, 'w')
+	np.save(f, encodings)
+	f.close()
+
 def load_file(filename):
 
 	f = open(filename, 'r')

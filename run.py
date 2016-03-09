@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
 from sklearn.neighbors import NearestNeighbors
 from sklearn.svm import LinearSVC
+from sklearn.datasets import load_iris
 
 #numpy
 from numpy import array
@@ -44,6 +45,7 @@ from utilities import describe_array
 from utilities import line_break
 from utilities import save_dictionary
 from utilities import save_descriptor_array
+from utilities import save_encodings
 from utilities import load_file
 from utilities import prepare_image
 from utilities import flatten_daisy
@@ -97,12 +99,16 @@ def get_hog_descriptor(image):
 
 	return hog_image
 
-def run_on_all_images(process_image, image_directory, images_to_sample_per_class, number_to_stop_at):
+def run_on_all_images(process_image, image_directory, images_to_sample_per_class, number_to_stop_at, calc_descriptors):
 
 	#TODO: Make sure these are being run on images in the correct order
 
 	#specify generic form of return data
 	return_data = []
+
+	classification_list = []
+	classification_dict = {}
+	class_count = 0
 
 	#number of images processed
 	images_processed = 0
@@ -115,6 +121,10 @@ def run_on_all_images(process_image, image_directory, images_to_sample_per_class
 	#with open(image_directory) as current_file:
 
 		print(filename)
+
+		current_class = filename
+
+		classification_dict[current_class] = class_count
 
 		filename = image_directory +"/" + filename
 
@@ -132,29 +142,48 @@ def run_on_all_images(process_image, image_directory, images_to_sample_per_class
 
 				image = prepare_image(image)
 
-				flattened_descriptor = process_image(image)
+				if(calc_descriptors):
 
-				if(images_processed==0):
-					return_data=(flattened_descriptor)
-				else:
-					return_data = np.vstack((return_data,flattened_descriptor))
-				#describe_array(return_data)
-				describe_array(return_data)
+					descriptor = process_image(image)
 
-				#describe_array(flattened_descriptor)
+					#print("Resulting descriptor is: ")
+					#describe_array(descriptor)
 
-				#return if reached max images total to process
-				images_processed = images_processed + 1
-				print ("Processed ",str(images_processed)," images so far")
-				if(images_processed >= number_to_stop_at):
-					return return_data
+					if(images_processed==0):
+						return_data=descriptor
+
+					else:
+						return_data = np.vstack((return_data, descriptor))
+
+					describe_array(return_data)
+
+					#return if reached max images total to process
+					images_processed = images_processed + 1
+					print ("Processed ",str(images_processed)," images so far")
+					if(images_processed >= number_to_stop_at):
+						return return_data
+
+				#log classification of this images
+				classification_list.append(class_count)
 
 				line_break()
 				line_break()
 
 			images_sampled_in_class = images_sampled_in_class+1
 
-	return return_data
+		#done with this class
+		class_count = class_count + 1
+
+	print(classification_list)
+	print(classification_dict)
+
+	#convert to arrays
+	target_array = np.asarray(classification_list)
+	return_array = np.array(return_data)
+
+	describe_array(return_array)
+
+	return return_array, target_array, classification_dict
 
 def optimize_codebook(codebook, batch_of_descriptors, neigh):
 
@@ -322,13 +351,38 @@ def get_encoding(index_of_descriptor, descriptor_array, neigh, dictionary):
 
 	return ci
 
-def train_classifier(training_data, testing_data):
+def get_descriptor_encoding(descriptor, neigh, dictionary):
 
-	linear_svc = LinearSVC
+	xi = descriptor.reshape(1,-1)
+	bi = find_local_basis(xi, neigh, dictionary)
+	ci = np.linalg.lstsq(np.transpose(bi),np.transpose(xi))[0] #k-length encoding
+
+	return ci
+
+def train_classifier(total_classes, samples_per_class, training_data, target):
+
+	print("Target looks like: ")
+
+	describe_array(target)
+
+	target.reshape(total_classes*samples_per_class,1)
+
+	linear_svc = LinearSVC()
 	
-	linear_svc.fit(training_data,testing_data)
+	linear_svc.fit(training_data, target)
 
 	return linear_svc
+
+def get_encodings_array(descriptor_array, neigh, dictionary):
+
+	encoding_list = []
+
+	#TODO: Is it rows instead?
+	for column in descriptor_array:
+
+		encoding_list.append(get_descriptor_encoding(column, neigh, dictionary))
+
+	return np.squeeze(np.asarray(encoding_list))
 
 def main():
 
@@ -337,37 +391,36 @@ def main():
 	image_directory = "Caltech-101/101_ObjectCategories"
 
 	k_neighbors = 5
-	samples_per_class = 10 					#needs to be changed to not overlap with training set (ex: first 5 for training means can't just take first 50 for testing)
-	max_total_images = 100000
+	total_classes = 102
+	samples_per_class = 5 					#needs to be changed to not overlap with training set (ex: first 5 for training means can't just take first 50 for testing)
+	max_total_images = 10000
 	number_of_k_means_clusters = 1024		#base of codebook
+	calc_descriptors = False
 
 	#run only if haven't already generated descriptors 
 	#create and save new array of descriptors -------------------------------------------------------
 
 	#get descriptors
-	descriptor_list = run_on_all_images(get_hog_descriptor, image_directory, samples_per_class, max_total_images)
-
-	#convert to array
-	descriptor_array = np.array(descriptor_list)
+	descriptor_array, target_array, classification_dict = run_on_all_images(get_hog_descriptor, image_directory, samples_per_class, max_total_images, calc_descriptors)
 
 	#save array so don't have to recalcualte each time
-	save_descriptor_array(descriptor_array, 'hog_descriptors_testing', samples_per_class, max_total_images)
+	if(calc_descriptors):
+		save_descriptor_array(descriptor_array, 'hog_descriptors', samples_per_class, max_total_images)
 
 	#------------------------------------------------------------------------------------------------------------
 
-
  	#load previously-made array of descriptors
-	descriptor_array = load_file('hog_descriptors_5_100000')
+	descriptor_array = load_file('hog_descriptors_5_10000')
 
 	#run only if haven't already generated descriptors 
 
-	#create & save new dictionary -------------------------------------------------------------------------------
+	'''#create & save new dictionary -------------------------------------------------------------------------------
 
-	#dictionary = do_k_means((descriptor_array), number_of_k_means_clusters)
+	dictionary = do_k_means((descriptor_array), number_of_k_means_clusters)
 
-	#save_dictionary(dictionary, 'dictionary', samples_per_class, max_total_images, number_of_k_means_clusters)
+	save_dictionary(dictionary, 'dictionary', samples_per_class, max_total_images, number_of_k_means_clusters)
 
-	#------------------------------------------------------------------------------------------------------------
+	#------------------------------------------------------------------------------------------------------------'''
 
 	#load previously-made dictionary
 	dictionary = load_file('dictionary_5_100000_1024')
@@ -398,11 +451,27 @@ def main():
 	#Using approximated LLC encodings (skipping SPM step) for classifier
 	#		=> Don't need to do pooling or normalization
 
-	training_descriptors = load_file("hog_descriptors_5_100000")
-	testing_descriptors = load_file("hog_descriptors_testing_10_100000")
+	#run only if haven't already generated descriptors 
+
+	# create and save encodings -----------------------------------------------------------------------------
+
+	#training_descriptors = load_file("hog_descriptors_5_10000")
+
+	#encodings = get_encodings_array(training_descriptors, neigh, dictionary)
+
+	#save_encodings(encodings, "encodings", samples_per_class, max_total_images, number_of_k_means_clusters)
+
+	# ------------------------------------------------------------------------------------------------------
+
+	encodings = load_file("encodings_5_10000_1024")
+
+	describe_array(encodings)
 
 	#TODO: Need correct target vector for this
-	#classifier = train_classifier(training_descriptors, testing_descriptors)
+	classifier = train_classifier(total_classes, samples_per_class, encodings, target_array)
+
+	#TODO: Copy hog source code into some other file then modify it
+
 
 
 if __name__ == '__main__':
