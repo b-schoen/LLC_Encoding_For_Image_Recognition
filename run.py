@@ -306,18 +306,26 @@ def optimize_codebook(codebook, batch_of_descriptors, neigh):
  	optimized_codebook = np.copy(codebook)
 
  	##for i = 1 to N do
- 	for i in range(0,N):
+ 	for i in range(1,N):
+
+ 		print("-------------------------------------------------------------------------------------")
+ 		print(i)
+
+ 		x_i = batch_of_descriptors[i,:]
+ 		print(x_i.shape)
 
 		##	d ← 1 × M zero vector, 
 		d = np.zeros((1,M))
-		#print("d is: ", d)
 
 		##{locality constraint parameter} ------------------
+
+		print("{locality constraint parameter} ------------------")
+
 		##for j = 1 to M do
 		for j in range(0,M):
 
 			##	d j ← exp −1 − x i − b j 2 /σ .
-			d_j = np.linalg.norm(batch_of_descriptors[i,:]-codebook[j,:])
+			d_j = np.linalg.norm(x_i-codebook[j,:])
 			d_j = d_j*d_j
 			d_j = -d_j
 			d_j =  d_j / sigma_value
@@ -336,18 +344,49 @@ def optimize_codebook(codebook, batch_of_descriptors, neigh):
 		d = normalize(d,"l_2")
 
 		##{coding} -----------------------------------------
+
+		print("{coding} -----------------------------------------")
+
 		##c i ← argmax c ||x i − Bc|| 2 + λ||d c|| 2 s.t. 1 c = 1. 
 		#TODO: Assuming coding here can just use K-NN to approx like we did earlier
 		c_i = get_encoding(i, batch_of_descriptors, neigh, codebook)
-
+		print(c_i)
 
 		##{remove bias} ------------------------------------
-		##id ← {j|abs c i (j) > 0.01}, B i ← B(:, id),
+
+		print("{remove bias} ------------------------------------")
+
+		##id ← {j|abs c i (j) > 0.01}
+		id_found = False
+		j=0
+		while(not id_found):
+			if(math.fabs(c_i[0,j]) > 0.01 ):
+				id_value = j
+				id_found = True
+			j = j + 1
+
+		##B i ← B(:, id)
+		#TODO: What does this need to be size wise? Their notation doesn't mean slicing the same way
+		B_i = codebook[id_value,:]
+		print(B_i.shape)
+
 		##c i ← argmax c ||x i − B i c|| 2 s.t. j c(j) = 1.
+		#TODO: This is without that constraint
+		tilde_c_i = np.linalg.lstsq(np.transpose(B_i),np.transpose(x_i))[0]
 
 		##{update basis} -----------------------------------
-		##ΔB i ←= −2 c i (x i − B i  ̃ c i ), μ ← 1/i,
-		##B i ← B i − μΔB i /| ̃c i | 2 ,
+
+		print("{update basis} -----------------------------------")
+
+		##ΔB i ←= −2 c i (x i − B i  ̃ c i )
+		#TODO: How do I enforce that constraint?
+		#delta_B_i =  -2*tilde_c_i*(x_i-B_i*tilde_c_i)
+
+		##μ ← 1/i
+		#mu = 1.0 / i
+
+		##B i ← B i − μΔB i /| ̃c i | 2
+
 		##B(:, id) ← proj(B i ).
 
 
@@ -405,6 +444,8 @@ def train_SVM():
 	pass
 
 def get_encoding(index_of_descriptor, descriptor_array, neigh, dictionary):
+
+	print("Getting encoding")
 
 	#testing encoding on 1 descriptor at index_of_descriptor
 	xi = descriptor_array[index_of_descriptor].reshape(1,-1)
@@ -476,11 +517,15 @@ def main():
 	neigh = NearestNeighbors(n_neighbors=k_neighbors)
 	neigh.fit(dictionary)
 
+	#TODO: Why doesn't this work with 0?
 	index_of_descriptor = 1
-
 	get_encoding(index_of_descriptor, descriptor_array, neigh, dictionary)
 
-	optimize_codebook(dictionary, descriptor_array, neigh)
+	batch_size = 5
+	batch_of_descriptors = descriptor_array[:batch_size,:]
+	#batch_of_descriptors=descriptor_array
+
+	optimize_codebook(dictionary, batch_of_descriptors, neigh)
 
 
 if __name__ == '__main__':
