@@ -17,7 +17,7 @@ from sklearn.datasets import load_digits
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
 from sklearn.neighbors import NearestNeighbors
-from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
 
 #numpy
 from numpy import array
@@ -39,6 +39,18 @@ import inspect
 import math
 import cmath
 
+# functions from utilities.py
+from utilities import describe_array
+from utilities import line_break
+from utilities import save_dictionary
+from utilities import save_descriptor_array
+from utilities import load_file
+from utilities import prepare_image
+from utilities import flatten_daisy
+
+# functions from SPM.py
+from SPM import pooling
+from SPM import normalize
 
 def do_k_means(input_data, clusters):
 
@@ -73,32 +85,6 @@ def bench_k_means(estimator, name, data):
              metrics.silhouette_score(data, estimator.labels_,
                                       metric='euclidean',
                                       sample_size=sample_size)))'''
-	
-
-def find_local_basis(desc, neigh, dictionary):
-	ind=neigh.kneighbors(desc)[1]
-	B=dictionary[ind,:]
-	return np.squeeze(B)
-
-
-
-#def show_hog():
-#
-#	fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4), sharex=True, sharey=True)
-#
-#	ax1.axis('off')
-#	ax1.imshow(image, cmap=plt.cm.gray)
-#	ax1.set_title('Input image')
-#	ax1.set_adjustable('box-forced')
-#
-#	# Rescale histogram for better display
-#	hog_image_rescaled = exposure.rescale_intensity(hog_image, in_range=(0, 0.02))
-#
-#	ax2.axis('off')
-#	ax2.imshow(hog_image_rescaled, cmap=plt.cm.gray)
-#	ax2.set_title('Histogram of Oriented Gradients')
-#	ax1.set_adjustable('box-forced')
-#	plt.show()
 
 def get_hog_descriptor(image):
 
@@ -110,37 +96,6 @@ def get_hog_descriptor(image):
 	feature_descriptor, hog_image = hog(image, orientations=orientations, pixels_per_cell=pixels_per_cell, cells_per_block=cells_per_block, visualise=True)
 
 	return hog_image
-
-#turns 3D daisy array into 2D array
-def flatten_daisy(image):
-	print("Flattening daisy")
-	desc=daisy(image)
-	#describe_array(desc)
-	flat=desc[0,0,:]
-	for i in range(1,67):
-		for j in range(1,67):
-			#print(len(desc[i,j,:]))
-			flat=np.vstack((flat,desc[i,j,:]))
-	describe_array(flat)
-	return flat
-
-def prepare_image(image):
-
-	size = 300,300
- 
-	# resizes the image, preserves aspect ratio, resizes to be less than size
-	image.thumbnail(size, Image.ANTIALIAS)
-
-	#resize so all images are the same size
-	image = image.resize(size)
-
-	#print type(image)
-	print(image.size)
-
-	image = array(image)
-	image = color.rgb2gray(image)
-
-	return image
 
 def run_on_all_images(process_image, image_directory, images_to_sample_per_class, number_to_stop_at):
 
@@ -199,73 +154,7 @@ def run_on_all_images(process_image, image_directory, images_to_sample_per_class
 
 			images_sampled_in_class = images_sampled_in_class+1
 
-			
-	
 	return return_data
-
-def pooling(list_of_vectors, type_of_method):
-
-	#sum of vectors
-	if(type_of_method=="sum"):
-
-		#NOTE: Copy because otherwise numpy goes by reference
-		total_sum = np.copy(list_of_vectors[0])
-
-		for index in range(1, len(list_of_vectors)):
-
-			total_sum = total_sum + list_of_vectors[index]
-
-		return total_sum
-
-	#vector of row maxes
-	elif(type_of_method=="max"):
-
-		#initially set max_vector to first vector, so know size to iterate over
-		#NOTE: Copy because otherwise numpy goes by reference
-		max_vector = np.copy(list_of_vectors[0])
-
-		#for each row
-		for row_value_index in range(max_vector.size):
-
-			row_value_list = []
-
-			#get the row value of each vector
-			for list_index in range(0,len(list_of_vectors)):
-
-				current_row_value = (list_of_vectors[list_index])[row_value_index]
-
-				row_value_list.append(current_row_value)
-
-			#set the row value of max_vector to be the biggest row value out of all row values for vectors
-			max_vector[row_value_index] = max(row_value_list)
-
-		return max_vector
-
-	else:
-		raise NameError("pooling type_of_method must be either sum or max")
-
-
-def normalize(input_vector, type_of_method):
-
-	if(type_of_method=="sum"):
-
-		sum_of_vector_elements = np.sum(input_vector)
-		
-		normalized_vector = input_vector * (1.0 / sum_of_vector_elements)
-
-		return normalized_vector
-
-	elif(type_of_method=="l_2"):
-		
-		#vector norm defaults to 2-norm
-		l_2_norm = np.linalg.norm(input_vector)
-		
-		normalized_vector = input_vector * (1.0 / l_2_norm)
-
-		return normalized_vector
-
-	else:
-		raise NameError("normalize type_of_method must be either sum or l_2")
 
 def optimize_codebook(codebook, batch_of_descriptors, neigh):
 
@@ -399,49 +288,10 @@ def label_images():
 
 	print("in progress")
 
-def describe_array(input_array):
-
-	print("Describing array")
-
-	print(type(input_array))
-
-	#print(np.dtype(input_array[0,0]))
-
-	print(input_array.shape)
-
-	line_break()
-
-def line_break():
-	print("---------------------------------------")
-
-
-def save_dictionary(dictionary, filename, samples_per_class, max_total_images, number_of_k_means_clusters):
-
-	filename = filename + "_" + str(samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters)
-
-	f = open(filename, 'w')
-	np.save(f, dictionary)
-	f.close()
-
-def save_descriptor_array(descriptor_array, filename, samples_per_class, max_total_images):
-
-	filename = filename + "_" + str(samples_per_class)+"_"+str(max_total_images)
-
-	f = open(filename, 'w')
-	np.save(f, descriptor_array)
-	f.close()
-
-def load_file(filename):
-
-	f = open(filename, 'r')
-	return_object = np.load(f)
-	f.close()
-
-	return return_object
-
-def train_SVM():
-
-	pass
+def find_local_basis(descriptor, neigh, dictionary):
+	ind=neigh.kneighbors(descriptor)[1]
+	B=dictionary[ind,:]
+	return np.squeeze(B)
 
 def get_encoding(index_of_descriptor, descriptor_array, neigh, dictionary):
 
@@ -472,6 +322,14 @@ def get_encoding(index_of_descriptor, descriptor_array, neigh, dictionary):
 
 	return ci
 
+def train_classifier(training_data, testing_data):
+
+	linear_svc = LinearSVC
+	
+	linear_svc.fit(training_data,testing_data)
+
+	return linear_svc
+
 def main():
 
 	# Datasets
@@ -479,7 +337,7 @@ def main():
 	image_directory = "Caltech-101/101_ObjectCategories"
 
 	k_neighbors = 5
-	samples_per_class = 50 #needs to be changed to not overlap with training set (ex: first 5 for training means can't just take first 50 for testing)
+	samples_per_class = 10 					#needs to be changed to not overlap with training set (ex: first 5 for training means can't just take first 50 for testing)
 	max_total_images = 100000
 	number_of_k_means_clusters = 1024		#base of codebook
 
@@ -487,13 +345,13 @@ def main():
 	#create and save new array of descriptors -------------------------------------------------------
 
 	#get descriptors
-	#descriptor_list = run_on_all_images(get_hog_descriptor, image_directory, samples_per_class, max_total_images)
+	descriptor_list = run_on_all_images(get_hog_descriptor, image_directory, samples_per_class, max_total_images)
 
 	#convert to array
-	#descriptor_array = np.array(descriptor_list)
+	descriptor_array = np.array(descriptor_list)
 
 	#save array so don't have to recalcualte each time
-	#save_descriptor_array(descriptor_array, 'hog_descriptors_testing', samples_per_class, max_total_images)
+	save_descriptor_array(descriptor_array, 'hog_descriptors_testing', samples_per_class, max_total_images)
 
 	#------------------------------------------------------------------------------------------------------------
 
@@ -521,11 +379,30 @@ def main():
 	index_of_descriptor = 1
 	get_encoding(index_of_descriptor, descriptor_array, neigh, dictionary)
 
+	'''#Codebook optimization -------------------------------------------------------------------------------------
+
 	batch_size = 5
 	batch_of_descriptors = descriptor_array[:batch_size,:]
 	#batch_of_descriptors=descriptor_array
 
 	optimize_codebook(dictionary, batch_of_descriptors, neigh)
+
+	#-----------------------------------------------------------------------------------------------------------'''
+
+	#TODO: Implement SPM with encodings
+
+	#TODO: Pool and normalize SPM results
+
+	#TODO: Use SPM results in classifier
+
+	#Using approximated LLC encodings (skipping SPM step) for classifier
+	#		=> Don't need to do pooling or normalization
+
+	training_descriptors = load_file("hog_descriptors_5_100000")
+	testing_descriptors = load_file("hog_descriptors_testing_10_100000")
+
+	#TODO: Need correct target vector for this
+	#classifier = train_classifier(training_descriptors, testing_descriptors)
 
 
 if __name__ == '__main__':
