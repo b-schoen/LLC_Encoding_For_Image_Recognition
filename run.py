@@ -17,6 +17,7 @@ from sklearn.datasets import load_digits
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
 from sklearn.neighbors import NearestNeighbors
+from sklearn.svm import SVC
 
 #numpy
 from numpy import array
@@ -190,10 +191,10 @@ def run_on_all_images(process_image, image_directory, images_to_sample_per_class
 				if(images_processed >= number_to_stop_at):
 					return return_data
 
-				images_sampled_in_class = images_sampled_in_class+1
+				line_break()
+				line_break()
 
-				line_break()
-				line_break()
+			images_sampled_in_class = images_sampled_in_class+1
 
 			
 	
@@ -263,39 +264,64 @@ def normalize(input_vector, type_of_method):
 	else:
 		raise NameError("normalize type_of_method must be either sum or l_2")
 
-def optimize_codebook(codebook):
-
-	# D - dimension of local descriptors
-	# N - number of descriptors per image
-	# M - number of entries (vectors) in codebook
+def optimize_codebook(codebook, batch_of_descriptors):
 
 	##input: B init ∈ R D×M , X ∈ R D×N , λ, σ
 
-	##output: B
+	# set params -------------------------------------------------------------------------
+
+	# from paper
+	lambda_value = 500
+	sigma_value = 100
+
+	# from paper / our parameters
+	#TODO: Make this based on codebook variable?
+	codebook_size = 2048
+
+	print("Codebook is of size: ")
+	print(codebook.size)
+
+	print("Batch of descriptors is of size: ")
+	print(batch_of_descriptors.size)
+
+	# D - dimension of local descriptors
+
+	# N - number of descriptors in this batch of the online learning algorithm
+	#		-	This is why X is DxN, because it's an array of N descriptor vectors
+
+
+	# M - number of entries (vectors) in codebook
+
+	# --------------------------------------------------------------------------------------
 
  	##B ← B init .
- 	optimized_codebook = codebook
+ 	optimized_codebook = np.array.copy(codebook)
 
  		##for i = 1 to N do
  		#for i in range(1,n+1):
 
- 			#pass
-
 			##	d ← 1 × M zero vector, 
+
 			##{locality constraint parameter} ------------------
 			##for j = 1 to M do
 			##	d j ← exp −1 − x i − b j 2 /σ .
 			##end for
 			##d ← normalize (0,1] (d) 
+
 			##{coding} -----------------------------------------
 			##c i ← argmax c ||x i − Bc|| 2 + λ||d c|| 2 s.t. 1 c = 1. 
+
 			##{remove bias} ------------------------------------
 			##id ← {j|abs c i (j) > 0.01}, B i ← B(:, id),
 			##c i ← argmax c ||x i − B i c|| 2 s.t. j c(j) = 1.
+
 			##{update basis} -----------------------------------
 			##ΔB i ←= −2 c i (x i − B i  ̃ c i ), μ ← 1/i,
 			##B i ← B i − μΔB i /| ̃c i | 2 ,
 			##B(:, id) ← proj(B i ).
+
+
+	##output: B
 
 	return "in progress"
 
@@ -344,6 +370,34 @@ def load_file(filename):
 
 	return return_object
 
+def train_SVM():
+
+	pass
+
+def test_encoding(index_of_descriptor, descriptor_array, neigh, dictionary):
+
+	#testing encoding on 1 descriptor at index_of_descriptor
+	xi = descriptor_array[index_of_descriptor].reshape(1,-1)
+	bi = find_local_basis(xi, neigh, dictionary)
+	ci = np.linalg.lstsq(np.transpose(bi),np.transpose(xi))[0] #k-length encoding
+	err= np.linalg.lstsq(np.transpose(bi),np.transpose(xi))[1]
+	
+	print("Descriptor for x_i: ")
+	describe_array(xi)
+	print(xi)
+
+	print("Base for x_i: ")
+	describe_array(bi)
+	print(bi)
+
+	print("Code for x_i: ")
+	describe_array(ci)
+	print(ci)
+
+	print("Error for x_i: ")
+	describe_array(err)
+	print(err)
+
 def main():
 
 	# Datasets
@@ -351,7 +405,7 @@ def main():
 	image_directory = "Caltech-101/101_ObjectCategories"
 
 	k_neighbors = 5
-	samples_per_class = 5
+	samples_per_class = 50 #needs to be changed to not overlap with training set (ex: first 5 for training means can't just take first 50 for testing)
 	max_total_images = 100000
 	number_of_k_means_clusters = 2048		#base of codebook
 
@@ -365,7 +419,7 @@ def main():
 	#descriptor_array = np.array(descriptor_list)
 
 	#save array so don't have to recalcualte each time
-	#save_descriptor_array(descriptor_array, 'hog_descriptors', samples_per_class, max_total_images)
+	#save_descriptor_array(descriptor_array, 'hog_descriptors_testing', samples_per_class, max_total_images)
 
 	#------------------------------------------------------------------------------------------------------------
 
@@ -386,31 +440,12 @@ def main():
 	#load previously-made dictionary
 	dictionary = load_file('dictionary_5_100000_1024')
 
-	#TODO: Doesn't this need to be hierarchical?
 	neigh = NearestNeighbors(n_neighbors=k_neighbors)
 	neigh.fit(dictionary)
 
-	#testing encoding on 1 descriptor
-	xi = descriptor_array[1].reshape(1,-1)
-	bi = find_local_basis(xi, neigh, dictionary)
-	ci = np.linalg.lstsq(np.transpose(bi),np.transpose(xi))[0] #k-length encoding
-	err= np.linalg.lstsq(np.transpose(bi),np.transpose(xi))[1]
-	
-	print("Descriptor for x_i: ")
-	describe_array(xi)
-	print(xi)
+	index_of_descriptor = 1
 
-	print("Base for x_i: ")
-	describe_array(bi)
-	print(bi)
-
-	print("Code for x_i: ")
-	describe_array(ci)
-	print(ci)
-
-	print("Error for x_i: ")
-	describe_array(err)
-	print(err)
+	test_encoding(index_of_descriptor, descriptor_array, neigh, dictionary)
 
 
 if __name__ == '__main__':
