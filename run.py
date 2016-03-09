@@ -36,11 +36,14 @@ import inspect
 
 
 
-def do_k_means(input_data, sample_size, clusters):
+def do_k_means(input_data, clusters):
+
+	print("Doing k means")
 
 	#scale data
 	scaled_data = scale(input_data)
 	describe_array(scaled_data)
+
 	#get samples and features
 	n_samples, n_features = scaled_data.shape
 
@@ -50,10 +53,12 @@ def do_k_means(input_data, sample_size, clusters):
 def bench_k_means(estimator, name, data):
     t0 = time()
     km=estimator.fit(data)
-    #describe_array((km.transform(data)))
-    #print(len(estimator.predict((data))))
-    #describe_array(km.cluster_centers_)
+
+    print("Done k means")
+
     return km.cluster_centers_
+
+    #for additional info
     '''print('% 9s   %.2fs    %i   %.3f   %.3f   %.3f   %.3f   %.3f    %.3f'
           % (name, (time() - t0), estimator.inertia_,
              metrics.homogeneity_score(labels, estimator.labels_),
@@ -66,9 +71,9 @@ def bench_k_means(estimator, name, data):
                                       sample_size=sample_size)))'''
 	
 
-def find_local_basis(desc, neigh, dict):
+def find_local_basis(desc, neigh, dictionary):
 	ind=neigh.kneighbors(desc)[1]
-	B=dict[ind,:]
+	B=dictionary[ind,:]
 	return np.squeeze(B)
 
 
@@ -133,13 +138,17 @@ def prepare_image(image):
 
 	return image
 
-def run_on_all_images(process_image, image_directory, number_to_stop_at):
+def run_on_all_images(process_image, image_directory, images_to_sample_per_class, number_to_stop_at):
+
+	#TODO: Make sure these are being run on images in the correct order
 
 	#specify generic form of return data
 	return_data = []
 
 	#number of images processed
 	images_processed = 0
+	#number of images to sample per class
+	images_sampled_in_class = 0
 
 	print(image_directory)
 
@@ -150,35 +159,43 @@ def run_on_all_images(process_image, image_directory, number_to_stop_at):
 
 		filename = image_directory +"/" + filename
 
+		images_sampled_in_class = 0
+
 		for image_file in os.listdir(filename):
 
-			#print(image_file)
+			if(images_sampled_in_class < images_to_sample_per_class):
 
-			image_file = filename +"/" + image_file
+				#print(image_file)
 
-			image = Image.open(image_file)
+				image_file = filename +"/" + image_file
 
-			image = prepare_image(image)
+				image = Image.open(image_file)
 
-			flattened_descriptor = process_image(image)
+				image = prepare_image(image)
 
-			if(images_processed==0):
-				return_data=(flattened_descriptor)
-			else:
-				return_data = np.vstack((return_data,flattened_descriptor))
-			#describe_array(return_data)
-			describe_array(return_data)
+				flattened_descriptor = process_image(image)
 
-			#describe_array(flattened_descriptor)
+				if(images_processed==0):
+					return_data=(flattened_descriptor)
+				else:
+					return_data = np.vstack((return_data,flattened_descriptor))
+				#describe_array(return_data)
+				describe_array(return_data)
 
-			images_processed = images_processed + 1
-			print ("Processed ",str(images_processed)," images so far")
+				#describe_array(flattened_descriptor)
 
-			line_break()
-			line_break()
+				#return if reached max images total to process
+				images_processed = images_processed + 1
+				print ("Processed ",str(images_processed)," images so far")
+				if(images_processed >= number_to_stop_at):
+					return return_data
 
-			if(images_processed >= number_to_stop_at):
-				return return_data
+				images_sampled_in_class = images_sampled_in_class+1
+
+				line_break()
+				line_break()
+
+			
 	
 	return return_data
 
@@ -246,6 +263,42 @@ def normalize(input_vector, type_of_method):
 	else:
 		raise NameError("normalize type_of_method must be either sum or l_2")
 
+def optimize_codebook(codebook):
+
+	# D - dimension of local descriptors
+	# N - number of descriptors per image
+	# M - number of entries (vectors) in codebook
+
+	##input: B init ∈ R D×M , X ∈ R D×N , λ, σ
+
+	##output: B
+
+ 	##B ← B init .
+ 	optimized_codebook = codebook
+
+ 		##for i = 1 to N do
+ 		#for i in range(1,n+1):
+
+ 			#pass
+
+			##	d ← 1 × M zero vector, 
+			##{locality constraint parameter} ------------------
+			##for j = 1 to M do
+			##	d j ← exp −1 − x i − b j 2 /σ .
+			##end for
+			##d ← normalize (0,1] (d) 
+			##{coding} -----------------------------------------
+			##c i ← argmax c ||x i − Bc|| 2 + λ||d c|| 2 s.t. 1 c = 1. 
+			##{remove bias} ------------------------------------
+			##id ← {j|abs c i (j) > 0.01}, B i ← B(:, id),
+			##c i ← argmax c ||x i − B i c|| 2 s.t. j c(j) = 1.
+			##{update basis} -----------------------------------
+			##ΔB i ←= −2 c i (x i − B i  ̃ c i ), μ ← 1/i,
+			##B i ← B i − μΔB i /| ̃c i | 2 ,
+			##B(:, id) ← proj(B i ).
+
+	return "in progress"
+
 
 def label_images():
 
@@ -266,6 +319,31 @@ def describe_array(input_array):
 def line_break():
 	print("---------------------------------------")
 
+
+def save_dictionary(dictionary, filename, samples_per_class, max_total_images, number_of_k_means_clusters):
+
+	filename = filename + "_" + str(samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters)
+
+	f = open(filename, 'w')
+	np.save(f, dictionary)
+	f.close()
+
+def save_descriptor_array(descriptor_array, filename, samples_per_class, max_total_images):
+
+	filename = filename + "_" + str(samples_per_class)+"_"+str(max_total_images)
+
+	f = open(filename, 'w')
+	np.save(f, descriptor_array)
+	f.close()
+
+def load_file(filename):
+
+	f = open(filename, 'r')
+	return_object = np.load(f)
+	f.close()
+
+	return return_object
+
 def main():
 
 	# Datasets
@@ -273,38 +351,44 @@ def main():
 	image_directory = "Caltech-101/101_ObjectCategories"
 
 	k_neighbors = 5
-	
-	#create and save new array of descriptors
-	#descriptor_list = run_on_all_images(flatten_daisy,image_directory, 100)
-	descriptor_list = run_on_all_images(get_hog_descriptor, image_directory, 10)
-	f = open('hog_descriptors', 'w')
-	descriptor_array = np.array(descriptor_list)
-	np.save(f,descriptor_array)
-	f.close()
- 	
+	samples_per_class = 5
+	max_total_images = 100000
+	number_of_k_means_clusters = 2048		#base of codebook
+
+	#run only if haven't already generated descriptors 
+	#create and save new array of descriptors -------------------------------------------------------
+
+	#get descriptors
+	#descriptor_list = run_on_all_images(get_hog_descriptor, image_directory, samples_per_class, max_total_images)
+
+	#convert to array
+	#descriptor_array = np.array(descriptor_list)
+
+	#save array so don't have to recalcualte each time
+	#save_descriptor_array(descriptor_array, 'hog_descriptors', samples_per_class, max_total_images)
+
+	#------------------------------------------------------------------------------------------------------------
+
+
  	#load previously-made array of descriptors
-	f = open('hog_descriptors', 'r')
-	descriptor_array = np.load(f)
-	f.close()
+	descriptor_array = load_file('hog_descriptors_5_100000')
 
-	#print(hog_image.target)
-	#digits = load_digits()
-	#describe_array(digits.data)
+	#run only if haven't already generated descriptors 
 
-	#create & save new dictionary
-	#f = open('/home/brenna/Documents/dictionary', 'w')
-	dictionary = do_k_means((descriptor_array), 10, 8)
-	#np.save(f,dictionary)
-	#f.close()'''
+	#create & save new dictionary -------------------------------------------------------------------------------
+
+	#dictionary = do_k_means((descriptor_array), number_of_k_means_clusters)
+
+	#save_dictionary(dictionary, 'dictionary', samples_per_class, max_total_images, number_of_k_means_clusters)
+
+	#------------------------------------------------------------------------------------------------------------
 
 	#load previously-made dictionary
-	#f = open('/home/brenna/Documents/dictionary', 'r')
-	#dictionary = np.load(f)
-	#f.close()
+	dictionary = load_file('dictionary_5_100000_1024')
 
 	#TODO: Doesn't this need to be hierarchical?
 	neigh = NearestNeighbors(n_neighbors=k_neighbors)
-	neigh = neigh.fit(dictionary)
+	neigh.fit(dictionary)
 
 	#testing encoding on 1 descriptor
 	xi = descriptor_array[1].reshape(1,-1)
@@ -314,12 +398,19 @@ def main():
 	
 	print("Descriptor for x_i: ")
 	describe_array(xi)
+	print(xi)
+
 	print("Base for x_i: ")
 	describe_array(bi)
+	print(bi)
+
 	print("Code for x_i: ")
 	describe_array(ci)
+	print(ci)
+
 	print("Error for x_i: ")
 	describe_array(err)
+	print(err)
 
 
 if __name__ == '__main__':
