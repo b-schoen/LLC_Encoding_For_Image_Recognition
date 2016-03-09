@@ -35,6 +35,9 @@ import Image
 #inspect functions
 import inspect
 
+#math (real and complex)
+import math
+import cmath
 
 
 def do_k_means(input_data, clusters):
@@ -264,61 +267,88 @@ def normalize(input_vector, type_of_method):
 	else:
 		raise NameError("normalize type_of_method must be either sum or l_2")
 
-def optimize_codebook(codebook, batch_of_descriptors):
+def optimize_codebook(codebook, batch_of_descriptors, neigh):
+
+	## Two hashes imply psuedocode from paper
 
 	##input: B init ∈ R D×M , X ∈ R D×N , λ, σ
 
 	# set params -------------------------------------------------------------------------
 
 	# from paper
-	lambda_value = 500
-	sigma_value = 100
+	lambda_value = float(500)
+	sigma_value = float(100)
 
 	# from paper / our parameters
-	#TODO: Make this based on codebook variable?
-	codebook_size = 2048
+	#codebook_size = codebook.shape[0]
 
-	print("Codebook is of size: ")
-	print(codebook.size)
+	print("Codebook has shape: ", codebook.shape)
 
-	print("Batch of descriptors is of size: ")
-	print(batch_of_descriptors.size)
+	print("Batch of descriptors has shape: ", batch_of_descriptors.shape)
 
 	# D - dimension of local descriptors
+	D = batch_of_descriptors.shape[1]
 
 	# N - number of descriptors in this batch of the online learning algorithm
 	#		-	This is why X is DxN, because it's an array of N descriptor vectors
-
+	N = batch_of_descriptors.shape[0]
 
 	# M - number of entries (vectors) in codebook
+	M = codebook.shape[0]
+
+	print("D is: ", D)
+	print("N is: ", N)
+	print("M is: ", M)
 
 	# --------------------------------------------------------------------------------------
 
  	##B ← B init .
- 	optimized_codebook = np.array.copy(codebook)
+ 	optimized_codebook = np.copy(codebook)
 
- 		##for i = 1 to N do
- 		#for i in range(1,n+1):
+ 	##for i = 1 to N do
+ 	for i in range(0,N):
 
-			##	d ← 1 × M zero vector, 
+		##	d ← 1 × M zero vector, 
+		d = np.zeros((1,M))
+		#print("d is: ", d)
 
-			##{locality constraint parameter} ------------------
-			##for j = 1 to M do
+		##{locality constraint parameter} ------------------
+		##for j = 1 to M do
+		for j in range(0,M):
+
 			##	d j ← exp −1 − x i − b j 2 /σ .
-			##end for
-			##d ← normalize (0,1] (d) 
+			d_j = np.linalg.norm(batch_of_descriptors[i,:]-codebook[j,:])
+			d_j = d_j*d_j
+			d_j = -d_j
+			d_j =  d_j / sigma_value
 
-			##{coding} -----------------------------------------
-			##c i ← argmax c ||x i − Bc|| 2 + λ||d c|| 2 s.t. 1 c = 1. 
+			#TODO: Is this natural log or 1/e^x?
+			#TODO: Plain exp is definitely wrong because it ignores the -1, but I don't see how they're getting the -1 from their paper
+			#		And why is distance negative?
+			d_j = math.exp(d_j)
 
-			##{remove bias} ------------------------------------
-			##id ← {j|abs c i (j) > 0.01}, B i ← B(:, id),
-			##c i ← argmax c ||x i − B i c|| 2 s.t. j c(j) = 1.
+			d[0,j] =  d_j
 
-			##{update basis} -----------------------------------
-			##ΔB i ←= −2 c i (x i − B i  ̃ c i ), μ ← 1/i,
-			##B i ← B i − μΔB i /| ̃c i | 2 ,
-			##B(:, id) ← proj(B i ).
+		##end for
+
+		##d ← normalize (0,1] (d) 
+		#TODO: Correct type of normalization?
+		d = normalize(d,"l_2")
+
+		##{coding} -----------------------------------------
+		##c i ← argmax c ||x i − Bc|| 2 + λ||d c|| 2 s.t. 1 c = 1. 
+		#TODO: Assuming coding here can just use K-NN to approx like we did earlier
+		c_i = get_encoding(i, batch_of_descriptors, neigh, codebook)
+
+
+		##{remove bias} ------------------------------------
+		##id ← {j|abs c i (j) > 0.01}, B i ← B(:, id),
+		##c i ← argmax c ||x i − B i c|| 2 s.t. j c(j) = 1.
+
+		##{update basis} -----------------------------------
+		##ΔB i ←= −2 c i (x i − B i  ̃ c i ), μ ← 1/i,
+		##B i ← B i − μΔB i /| ̃c i | 2 ,
+		##B(:, id) ← proj(B i ).
 
 
 	##output: B
@@ -374,15 +404,16 @@ def train_SVM():
 
 	pass
 
-def test_encoding(index_of_descriptor, descriptor_array, neigh, dictionary):
+def get_encoding(index_of_descriptor, descriptor_array, neigh, dictionary):
 
 	#testing encoding on 1 descriptor at index_of_descriptor
 	xi = descriptor_array[index_of_descriptor].reshape(1,-1)
 	bi = find_local_basis(xi, neigh, dictionary)
 	ci = np.linalg.lstsq(np.transpose(bi),np.transpose(xi))[0] #k-length encoding
 	err= np.linalg.lstsq(np.transpose(bi),np.transpose(xi))[1]
-	
-	print("Descriptor for x_i: ")
+
+	#display results
+	'''print("Descriptor for x_i: ")
 	describe_array(xi)
 	print(xi)
 
@@ -396,7 +427,9 @@ def test_encoding(index_of_descriptor, descriptor_array, neigh, dictionary):
 
 	print("Error for x_i: ")
 	describe_array(err)
-	print(err)
+	print(err)'''
+
+	return ci
 
 def main():
 
@@ -407,7 +440,7 @@ def main():
 	k_neighbors = 5
 	samples_per_class = 50 #needs to be changed to not overlap with training set (ex: first 5 for training means can't just take first 50 for testing)
 	max_total_images = 100000
-	number_of_k_means_clusters = 2048		#base of codebook
+	number_of_k_means_clusters = 1024		#base of codebook
 
 	#run only if haven't already generated descriptors 
 	#create and save new array of descriptors -------------------------------------------------------
@@ -445,7 +478,9 @@ def main():
 
 	index_of_descriptor = 1
 
-	test_encoding(index_of_descriptor, descriptor_array, neigh, dictionary)
+	get_encoding(index_of_descriptor, descriptor_array, neigh, dictionary)
+
+	optimize_codebook(dictionary, descriptor_array, neigh)
 
 
 if __name__ == '__main__':
