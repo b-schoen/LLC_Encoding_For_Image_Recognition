@@ -10,6 +10,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
 from sklearn.neighbors import NearestNeighbors
 from sklearn.svm import SVC
+from sklearn.datasets import load_iris
 
 #numpy
 from numpy import array
@@ -28,20 +29,30 @@ import inspect
 import math
 import cmath
 
+def display(*some_strings):
+
+	no_print = True
+
+	if not no_print:
+
+		print(some_strings)
+
+def cheap_display(*some_strings):
+
+	print(some_strings)
+
 def describe_array(input_array):
 
-	print("Describing array")
+	display("Describing array")
 
-	print(type(input_array))
+	display(type(input_array))
 
-	#print(np.dtype(input_array[0,0]))
-
-	print(input_array.shape)
+	display(input_array.shape)
 
 	line_break()
 
 def line_break():
-	print("---------------------------------------")
+	display("---------------------------------------")
 
 
 def save_dictionary(dictionary, filename, samples_per_class, max_total_images, number_of_k_means_clusters):
@@ -87,7 +98,7 @@ def prepare_image(image):
 	image = image.resize(size)
 
 	#print type(image)
-	print(image.size)
+	display(image.size)
 
 	image = array(image)
 	image = color.rgb2gray(image)
@@ -97,7 +108,7 @@ def prepare_image(image):
 
 #turns 3D daisy array into 2D array
 def flatten_daisy(image):
-	print("Flattening daisy")
+	display("Flattening daisy")
 	desc=daisy(image)
 	#describe_array(desc)
 	flat=desc[0,0,:]
@@ -107,3 +118,15 @@ def flatten_daisy(image):
 			flat=np.vstack((flat,desc[i,j,:]))
 	describe_array(flat)
 	return flat
+
+def demo_iris():
+
+	iris = load_iris()
+
+	display("Iris data looks like: ")
+	describe_array(iris.data)
+	display(iris.data)
+
+	display("Iris target looks like: ")
+	describe_array(iris.target)
+	display(iris.target)
