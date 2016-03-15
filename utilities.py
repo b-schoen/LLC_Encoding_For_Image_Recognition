@@ -29,6 +29,7 @@ import inspect
 import math
 import cmath
 
+# General function to use in place of print (so can redirect output elsewhere or not print at all)
 def display(*some_strings):
 
 	no_print = True
@@ -37,6 +38,7 @@ def display(*some_strings):
 
 		print(some_strings)
 
+# Display that always prints out, should not be used inside loops or anything else that calls frequently
 def cheap_display(*some_strings):
 
 	print(some_strings)

@@ -1,3 +1,4 @@
+#TODO: Dig into modified_skimage.py to directly use histograms mid hog for pooling / normalization (for SPM)
 #TODO: Resolve all other TODOs
 
 #matlab plotting
@@ -13,6 +14,7 @@ from modified_skimage import modified_hog
 #kmeans
 from sklearn import metrics
 from sklearn.cluster import KMeans
+from sklearn.cluster import MiniBatchKMeans
 from sklearn.datasets import load_digits
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
@@ -67,8 +69,13 @@ def do_k_means(input_data, clusters):
 	#get samples and features
 	n_samples, n_features = scaled_data.shape
 
-	return bench_k_means(KMeans(init='k-means++', n_clusters=clusters, n_init=10, verbose=1),
-              name="k-means++", data=scaled_data)
+	kmeans_function = KMeans(init='k-means++', n_clusters=clusters, n_init=1, verbose=0)
+
+	# use MiniBatchKMeans for faster performance (smaller batches means managable data size)
+	#	comes at the cost of worse accuracy
+	# kmeans_function = MiniBatchKMeans(init_size=2*clusters,init='k-means++', n_clusters=clusters, n_init=10, max_no_improvement=10, verbose=1)
+
+	return bench_k_means(kmeans_function, name="k-means++", data=scaled_data)
 
 def bench_k_means(estimator, name, data):
     t0 = time()
@@ -95,14 +102,11 @@ def get_hog_descriptor(image_file):
 	orientations = 9
 	pixels_per_cell = (8,8)
 	cells_per_block = (2,2)
-	return_as_feature_vector = True
 
 	image = Image.open(image_file)
 	image = prepare_image(image)
 
-	(feature_descriptor, hog_image) = hog(image, orientations=orientations, pixels_per_cell=pixels_per_cell, cells_per_block=cells_per_block, visualise=True)
-
-	#return hog_image
+	feature_descriptor = hog(image, orientations=orientations, pixels_per_cell=pixels_per_cell, cells_per_block=cells_per_block)
 
 	#display(feature_descriptor)
 	return feature_descriptor
@@ -363,7 +367,6 @@ def get_encoding(index_of_descriptor, descriptor_array, neigh, dictionary):
 	describe_array(err)
 	display(err)'''
 
-	#REMOVE
 	ci = np.transpose(ci)
 
 	return ci
@@ -374,7 +377,6 @@ def get_descriptor_encoding(descriptor, neigh, dictionary):
 	bi = find_local_basis(xi, neigh, dictionary)
 	ci = np.linalg.lstsq(np.transpose(bi),np.transpose(xi))[0] #k-length encoding
 
-	#REMOVE
 	ci = np.transpose(ci)
 
 	return ci
@@ -383,20 +385,31 @@ def get_encodings_array(descriptor_array, neigh, dictionary):
 
 	encoding_list = []
 
+	cheap_display(descriptor_array.shape)
+
+	encoding_count = 0
+
 	#TODO: Is it rows instead?
 	for column in descriptor_array:
 
-		encoding_list.append(get_descriptor_encoding(column, neigh, dictionary))
+		#REMOVE: Transpose
+		encoding_list.append(np.transpose(get_descriptor_encoding(column, neigh, dictionary)))
+
+		display(encoding_count)
+		encoding_count = encoding_count + 1
 
 	return np.squeeze(np.asarray(encoding_list))
 
-def train_classifier(total_classes, samples_per_class, training_data, target):
+def train_classifier(training_data, target):
 
 	cheap_display("Target looks like: ")
 
 	describe_array(target)
 
-	target.reshape(total_classes*samples_per_class,1)
+	#This is just reformatting for numpy's sake, not actually 'changing' shape
+	target.reshape(training_data.shape[0],1)
+
+	describe_array(target)
 
 	linear_svc = LinearSVC()
 	
@@ -455,6 +468,8 @@ def get_accuracy(classifier, testing_encodings, testing_target_array, testing_cl
 
 		actual_class_instance = get_actual_class(i, testing_target_array, testing_classification_dict)
 
+		display(actual_class_instance, predicted_class_instance)
+
 		if(predicted_class_instance == actual_class_instance):
 
 			hit_count = hit_count + 1
@@ -470,59 +485,75 @@ def main():
 
 	#TODO: Generates taking in these parameters
 
-	generate_descriptors = False
-	generate_dictionary = True
-	generate_encodings = True
+	training_generate_descriptors = False
+	testing_generate_descriptors = False
+
+	training_generate_dictionary = True
+
+	training_generate_encodings = True
+	testing_generate_encodings = True
 
 
 
-	#create and save new array of descriptors -------------------------------------------------------
+	# Generate training -----------------------------------------------------------------------------------
 
-	#get descriptors
+	# Get descriptors
+	cheap_display("Getting training descriptors...")
+
 	#NOTE: both classification dicts match
-	training_descriptor_array, training_target_array, training_classification_dict = run_on_all_images(get_hog_descriptor, image_directory, training_samples_per_class, max_total_images, generate_descriptors)
-	testing_descriptor_array,  testing_target_array, testing_classification_dict= run_on_all_images(get_hog_descriptor, image_directory, testing_samples_per_class, max_total_images, generate_descriptors, testing=True)
+	training_descriptors, training_target_array, training_classification_dict = run_on_all_images(get_hog_descriptor, image_directory, training_samples_per_class, max_total_images, training_generate_descriptors)
 
 	#save arrays so don't have to recalculate each time
-	if(generate_descriptors):
+	if(training_generate_descriptors):
 
-		save_descriptor_array(training_descriptor_array, 'hog_descriptors_training', training_samples_per_class, max_total_images)
-		save_descriptor_array(testing_descriptor_array, 'hog_descriptors_testing', testing_samples_per_class, max_total_images)
+		save_descriptor_array(training_descriptors, 'hog_descriptors_training', training_samples_per_class, max_total_images)
 
-	#------------------------------------------------------------------------------------------------------------
+	else:
 
+		#load previously-made array of descriptors
+		cheap_display("Loading training descriptors...")
+		training_descriptors = load_file('hog_descriptors_training_'+str(training_samples_per_class)+'_'+str(max_total_images))
 
-
-	#create & save new dictionary -------------------------------------------------------------------------------
-
-	#load previously-made array of descriptors
-	training_descriptor_array = load_file('hog_descriptors_training_'+str(training_samples_per_class)+'_'+str(max_total_images))
-	testing_descriptor_array = load_file('hog_descriptors_testing_'+str(testing_samples_per_class)+'_'+str(max_total_images))
+	# Get dictionary
 
 	#run only if haven't already generated descriptors 
-	if(generate_dictionary):
+	cheap_display("Getting dictionary...")
+	if(training_generate_dictionary):
 
-		dictionary = do_k_means((training_descriptor_array), number_of_k_means_clusters)
+		dictionary = do_k_means((training_descriptors), number_of_k_means_clusters)
 
 		save_dictionary(dictionary, 'dictionary', training_samples_per_class, max_total_images, number_of_k_means_clusters)
+	else:
 
-	#load previously-made dictionary
-	dictionary = load_file('dictionary_'+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
+		#load previously-made dictionary
+		cheap_display("Loading dictionary...")
+		dictionary = load_file('dictionary_'+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
 
-	#fit dictionary
+	# Fit dictionary
+	cheap_display("Fitting dictionary...")
 	neigh = NearestNeighbors(n_neighbors=k_neighbors)
 	neigh.fit(dictionary)
 
+	# Get encodings
+
+	#run only if haven't already generated encodings
+	cheap_display("Getting training encodings...")
+	if(training_generate_encodings):
+
+		training_encodings = get_encodings_array(training_descriptors, neigh, dictionary)
+
+		save_encodings(training_encodings, "encodings_training", training_samples_per_class, max_total_images, number_of_k_means_clusters)
+
+	else:
+
+		cheap_display("Loading training encodings...")
+		training_encodings = load_file("encodings_training_"+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
+
+	# Delete large unused objects
+
+	del training_descriptors
+
 	#------------------------------------------------------------------------------------------------------------
-
-
-
-	#TODO: Why doesn't this work with 0?
-	#Test getting an encoding
-	index_of_descriptor = 1
-	get_encoding(index_of_descriptor, training_descriptor_array, neigh, dictionary)
-
-
 
 
 	'''#Codebook optimization -------------------------------------------------------------------------------------
@@ -549,35 +580,55 @@ def main():
 
 	
 
-	# create and save encodings for data -------------------------------------------------------------------
 
-	training_descriptors = load_file("hog_descriptors_training_"+str(training_samples_per_class)+'_'+str(max_total_images))
-	testing_descriptors = load_file("hog_descriptors_testing_"+str(testing_samples_per_class)+'_'+str(max_total_images))
+	# Generate for testing ---------------------------------------------------------------------------------
 
-	#run only if haven't already generated descriptors 
-	if(generate_encodings):
+	# Generate descriptors
+	cheap_display("Getting testing descriptors...")
+	testing_descriptors,  testing_target_array, testing_classification_dict= run_on_all_images(get_hog_descriptor, image_directory, testing_samples_per_class, max_total_images, testing_generate_descriptors, testing=True)
 
-		training_encodings = get_encodings_array(training_descriptors, neigh, dictionary)
+	#save arrays so don't have to recalculate each time
+	if(testing_generate_descriptors):
+
+		save_descriptor_array(testing_descriptors, 'hog_descriptors_testing', testing_samples_per_class, max_total_images)
+
+	else:
+
+		#load previously-made array of descriptors
+		cheap_display("Loading testing descriptors...")
+		testing_descriptors = load_file('hog_descriptors_testing_'+str(testing_samples_per_class)+'_'+str(max_total_images))
+
+	# Get encodings
+
+	#run only if haven't already generated encodings
+	cheap_display("Getting testing encodings...")
+	if(testing_generate_encodings):
+
 		testing_encodings = get_encodings_array(testing_descriptors, neigh, dictionary)
 
-		save_encodings(training_encodings, "encodings_training", training_samples_per_class, max_total_images, number_of_k_means_clusters)
 		save_encodings(testing_encodings, "encodings_testing", testing_samples_per_class, max_total_images, number_of_k_means_clusters)
 
-	training_encodings = load_file("encodings_training_"+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
-	testing_encodings = load_file("encodings_testing_"+str(testing_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
+	else:
 
-	# ------------------------------------------------------------------------------------------------------
+		cheap_display("Loading testing encodings...")
+		testing_encodings = load_file("encodings_testing_"+str(testing_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
+
+	# --------------------------------------------------------------------------------------------------------
 
 
 
 	# Train classifier and predict results -----------------------------------------------------------------
 
-	#TODO: Is classification better doing or not doing tranpose AFTER encodings (training) are done?
+	#TODO: Is classification better doing or not doing transpose AFTER encodings (training) are done?
 
-	classifier = train_classifier(total_classes, training_samples_per_class, training_encodings, training_target_array)
+	classifier = train_classifier(training_encodings, training_target_array)
+
+	# assert that the testing and training classificaiton dictionaries match
+	assert (training_classification_dict == testing_classification_dict)
 
 	accuracy = get_accuracy(classifier, testing_encodings, testing_target_array, testing_classification_dict)
-	display("Accuracy is: ", accuracy)
+
+	cheap_display("Accuracy is: ", accuracy)
 
 	# -------------------------------------------------------------------------------------------------------
 
@@ -594,10 +645,10 @@ if __name__ == '__main__':
 
 	k_neighbors = 5
 	total_classes = 102
-	training_samples_per_class = 30 					 					
-	testing_samples_per_class = 50 						
+	training_samples_per_class = 10 					 					
+	testing_samples_per_class = 10						
 	max_total_images = 10000
-	number_of_k_means_clusters = 1024					#base of codebook
+	number_of_k_means_clusters = 128					#base of codebook
 
 
 	main()
