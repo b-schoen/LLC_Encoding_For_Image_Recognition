@@ -125,10 +125,16 @@ def get_modified_hog_descriptor(image_file):
 	image = Image.open(image_file)
 	image = prepare_image(image)
 
-	feature_descriptor = modified_hog(image, orientations=orientations, pixels_per_cell=pixels_per_cell, cells_per_block=cells_per_block)
+	normalised_blocks = modified_hog(image, orientations=orientations, pixels_per_cell=pixels_per_cell, cells_per_block=cells_per_block)
 
-	#display(feature_descriptor)
-	return feature_descriptor
+	descriptors = []
+
+	#NOTE: normalized blocks (x,y) are still (2,2,9), because have histograms for each cell in block (so just raveling and seeing if it works)
+	for x in xrange(normalised_blocks.shape[0]):
+		for y in xrange(normalised_blocks.shape[1]):
+			descriptors.append(normalised_blocks[x,y].ravel())
+
+	return descriptors
 
 def compare_hog_descriptors(image_file):
 
@@ -202,9 +208,14 @@ def run_on_all_images(process_image, image_directory, images_to_sample_per_class
 
 				if(calc_descriptors):
 
-					descriptor = process_image(image_file)
+					descriptors = process_image(image_file)
 
-					return_data_list.append(descriptor)
+					for descriptor in descriptors:
+
+						return_data_list.append(descriptor)
+
+						#log classification of this images
+						classification_list.append(class_count)
 
 					#return if reached max images total to process
 					images_processed = images_processed + 1
@@ -214,9 +225,6 @@ def run_on_all_images(process_image, image_directory, images_to_sample_per_class
 						raise UserError("Return case not implemented")
 
 						return return_data_list
-
-				#log classification of this images
-				classification_list.append(class_count)
 
 				line_break()
 				line_break()
@@ -520,6 +528,12 @@ def main():
 
 	#TODO: Generates taking in these parameters
 
+	# What to use ------------------------------
+
+	use_modified_hog = True
+
+	# ------------------------------------------
+
 	# What to generate --------------------------
 
 	training_generate_descriptors = True
@@ -534,6 +548,10 @@ def main():
 
 	# --------------------------------------------
 
+	if (not training_generate_descriptors) or (not testing_generate_descriptors):
+		print("asdfs")
+		raise Exception("Classification dict isn't implemented for modified hog yet")
+
 
 
 	# Generate training -----------------------------------------------------------------------------------
@@ -542,7 +560,10 @@ def main():
 	cheap_display("Getting training descriptors...")
 
 	#NOTE: both classification dicts match
-	training_descriptors, training_target_array, training_classification_dict = run_on_all_images(get_hog_descriptor, image_directory, training_samples_per_class, max_total_images, training_generate_descriptors)
+	if use_modified_hog:
+		training_descriptors, training_target_array, training_classification_dict = run_on_all_images(get_modified_hog_descriptor, image_directory, training_samples_per_class, max_total_images, training_generate_descriptors)
+	else:
+		training_descriptors, training_target_array, training_classification_dict = run_on_all_images(get_hog_descriptor, image_directory, training_samples_per_class, max_total_images, training_generate_descriptors)
 
 	#save arrays so don't have to recalculate each time
 	if(training_generate_descriptors):
