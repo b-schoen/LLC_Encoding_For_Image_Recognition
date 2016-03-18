@@ -36,7 +36,8 @@ def pooling(list_of_vectors, type_of_method):
 
 		#initially set max_vector to first vector, so know size to iterate over
 		#NOTE: Copy because otherwise numpy goes by reference
-		max_vector = np.copy(list_of_vectors[0])
+		#max_vector = np.copy(list_of_vectors[0])
+		max_vector = list_of_vectors[0]
 
 		#for each row
 		for row_value_index in range(max_vector.size):

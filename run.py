@@ -131,8 +131,6 @@ def get_modified_hog_descriptor(image_file):
 
 	descriptors = []
 
-	#BRE: Maybe this is faster than a list
-
 	#NOTE: normalized blocks (x,y) are still (2,2,9), because have histograms for each cell in block (so just raveling and seeing if it works)
 	#NOTE: 36 = 2 * 2 * 9 => total size of these is based on cells in block and orientations
 	descriptors=np.empty((normalised_blocks.shape[0],normalised_blocks.shape[1],dimension))
@@ -194,6 +192,8 @@ def get_spm_encodings(spm_subregions,neigh,dictionary, number_of_k_means_cluster
 
 	cheap_display("Getting SPM encodings...")
 
+	images_processed = 0
+
 	#print(spm_subregions.shape)
 	spm_encodings=[]
 	for img in spm_subregions:
@@ -213,6 +213,9 @@ def get_spm_encodings(spm_subregions,neigh,dictionary, number_of_k_means_cluster
 		spm_encodings.append(encoding)
 		#print(len(encoding))
 		#print('encoded an image')
+
+		images_processed = images_processed + 1
+		cheap_display("Encoded ",images_processed," images so far")
 
 	spm_encodings_array = np.asarray(spm_encodings)
 
@@ -328,7 +331,6 @@ def run_on_all_images(process_image, image_directory, images_to_sample_per_class
 		return_array = np.vstack(return_data_list)
 		cheap_display(return_array.shape)
 
-		#BRE: This isn't making anything an array
 		cheap_display("Making subregions list an array...")
 		subregions_array = np.asarray(subregions_list)
 
@@ -357,6 +359,7 @@ def get_descriptor_encoding(descriptor, neigh, dictionary, number_of_k_means_clu
 	ci = np.transpose(ci)
 
 	enc = np.zeros(number_of_k_means_clusters)
+
 	for i in xrange(len(ind)):
 		enc[ind[[i]]]=ci[i]
 
@@ -449,7 +452,7 @@ def get_accuracy(classifier, testing_encodings, testing_target_array, testing_cl
 
 		actual_class_instance = get_actual_class(i, testing_target_array, testing_classification_dict)
 
-		display(actual_class_instance, predicted_class_instance)
+		cheap_display(actual_class_instance, predicted_class_instance)
 
 		if(predicted_class_instance == actual_class_instance):
 
@@ -460,94 +463,6 @@ def get_accuracy(classifier, testing_encodings, testing_target_array, testing_cl
 	accuracy = float(hit_count) / float(total_count)
 
 	return accuracy
-
-def only_descriptor_main(
-	use_modified_hog,
-	training_generate_descriptors,
-	testing_generate_descriptors,
-	train_descriptor_based_classifier):
-
-	# Generate training -----------------------------------------------------------------------------------
-
-	# Get descriptors
-	cheap_display("Getting training descriptors...")
-
-	#NOTE: both classification dicts match
-	if use_modified_hog:
-		training_subregions, training_descriptors, training_target_array, training_classification_dict = run_on_all_images(get_modified_hog_descriptor, image_directory, training_samples_per_class, max_total_images, training_generate_descriptors, descriptor_only=True)
-		descriptor_file_label_training = 'modified_hog_descriptors_training'
-	else:
-		training_subregions, training_descriptors, training_target_array, training_classification_dict = run_on_all_images(get_hog_descriptor, image_directory, training_samples_per_class, max_total_images, training_generate_descriptors, descriptor_only=True)
-		descriptor_file_label_training = 'hog_descriptors_training'
-
-	#save arrays so don't have to recalculate each time
-	if(training_generate_descriptors):
-
-		save_descriptor_array(training_descriptors, descriptor_file_label_training, training_samples_per_class, max_total_images)
-		save_classification_dict(training_classification_dict, 'training_classification_dict', training_samples_per_class, max_total_images)
-		save_descriptor_array(training_subregions, 'SPM_'+descriptor_file_label_training, training_samples_per_class, max_total_images)
-
-	else:
-
-		#load previously-made array of descriptors
-		cheap_display("Loading training descriptors...")
-		training_descriptors = load_numpy_object_file(descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
-
-		cheap_display("Loading training classification dict...")
-		training_classification_dict = load_pickle_object_file('training_classification_dict'+"_"+str(training_samples_per_class)+"_"+str(max_total_images))
-
-		cheap_display("Loading training SPM subregions...")
-		training_subregions = load_file('SPM_'+descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
-
-	# Scale data
-	training_descriptors = scale(training_descriptors)
-
-	# Generate for testing ---------------------------------------------------------------------------------
-
-	# Generate descriptors
-	cheap_display("Getting testing descriptors...")
-	if use_modified_hog:
-		testing_subregions, testing_descriptors,  testing_target_array, testing_classification_dict= run_on_all_images(get_modified_hog_descriptor, image_directory, testing_samples_per_class, max_total_images, testing_generate_descriptors, testing=True, descriptor_only=True)
-		descriptor_file_label_testing = 'modified_hog_descriptors_testing'
-	else:
-		testing_subregions, testing_descriptors,  testing_target_array, testing_classification_dict= run_on_all_images(get_hog_descriptor, image_directory, testing_samples_per_class, max_total_images, testing_generate_descriptors, testing=True,descriptor_only=True)
-		descriptor_file_label_testing = 'hog_descriptors_testing'
-
-	#save arrays so don't have to recalculate each time
-	if(testing_generate_descriptors):
-
-		save_descriptor_array(testing_descriptors, descriptor_file_label_testing, testing_samples_per_class, max_total_images)
-		save_classification_dict(testing_classification_dict, 'testing_classification_dict', testing_samples_per_class, max_total_images)
-		save_descriptor_array(testing_subregions, 'SPM_'+descriptor_file_label_testing, testing_samples_per_class, max_total_images)
-
-	else:
-
-		#load previously-made array of descriptors
-		cheap_display("Loading testing descriptors...")
-		testing_descriptors = load_numpy_object_file(descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
-
-		cheap_display("Loading testing classification dict...")
-		testing_classification_dict = load_pickle_object_file('testing_classification_dict'+"_"+str(testing_samples_per_class)+"_"+str(max_total_images))
-
-		cheap_display("Loading testing SPM subregions...")
-		testing_subregions = load_file('SPM_'+descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
-
-	# Train classifier -------------------------------------------------------------------------
-
-	if(train_descriptor_based_classifier):
-
-			cheap_display("Training descriptor based classifier: ")
-			descriptor_based_classifier = train_classifier(training_descriptors, training_target_array)
-			save_classifier(descriptor_based_classifier, "classifier_encoding_based", training_samples_per_class, max_total_images,number_of_k_means_clusters)
-
-	else:
-
-		cheap_display("Loading descriptor based classifier: ")
-		descriptor_based_classifier = load_pickle_object_file("classifier_descriptor_based"+ "_" + str(training_samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters))
-
-	cheap_display("Getting accuracy for descriptor based classifier...")
-	descriptor_based_accuracy = get_accuracy(descriptor_based_classifier, testing_descriptors, testing_target_array, testing_classification_dict)
-	cheap_display("Accuracy for descriptor based classifier is: ", descriptor_based_accuracy)
 
 
 def main():
@@ -573,18 +488,7 @@ def main():
 
 	train_encodings_based_classifier = True
 
-	# --------------------------------------------
-
-	# If we only want to use descriptors, no encoding, try this -------------------
-	measure_descriptor_based_classification_accuracy = False
-	train_descriptor_based_classifier = False
-
-	if(measure_descriptor_based_classification_accuracy):
-		only_descriptor_main(use_modified_hog,training_generate_descriptors,testing_generate_descriptors,train_descriptor_based_classifier)
-		return
-
-	# -------------------------------------------------------------------------------
-
+	# -------------------------------------------
 
 
 	# Generate training -----------------------------------------------------------------------------------
@@ -606,6 +510,7 @@ def main():
 		save_descriptor_array(training_descriptors, descriptor_file_label_training, training_samples_per_class, max_total_images)
 		save_classification_dict(training_classification_dict, 'training_classification_dict', training_samples_per_class, max_total_images)
 		save_descriptor_array(training_subregions, 'SPM_'+descriptor_file_label_training, training_samples_per_class, max_total_images)
+		save_descriptor_array(training_target_array, 'training_target_'+descriptor_file_label_training, training_samples_per_class, max_total_images)
 
 	else:
 
@@ -617,7 +522,10 @@ def main():
 		training_classification_dict = load_pickle_object_file('training_classification_dict'+"_"+str(training_samples_per_class)+"_"+str(max_total_images))
 
 		cheap_display("Loading training SPM subregions...")
-		training_subregions = load_file('SPM_'+descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
+		training_subregions = load_numpy_object_file('SPM_'+descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
+
+		cheap_display("Loading training target array...")
+		training_target_array = load_numpy_object_file('training_target_'+descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
 
 	# Scale data
 	training_descriptors = scale(training_descriptors)
@@ -635,7 +543,7 @@ def main():
 
 		#load previously-made dictionary
 		cheap_display("Loading dictionary...")
-		dictionary = load_numpy_object_file('dictionary_'+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
+		dictionary = load_numpy_object_file('dictionary'+"_"+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
 
 	# Fit dictionary
 	cheap_display("Fitting dictionary...")
@@ -661,6 +569,7 @@ def main():
 
 	if not train_descriptor_based_classifier:
 		del training_descriptors
+		del training_subregions
 
 	#------------------------------------------------------------------------------------------------------------
 
@@ -685,6 +594,7 @@ def main():
 		save_descriptor_array(testing_descriptors, descriptor_file_label_testing, testing_samples_per_class, max_total_images)
 		save_classification_dict(testing_classification_dict, 'testing_classification_dict', testing_samples_per_class, max_total_images)
 		save_descriptor_array(testing_subregions, 'SPM_'+descriptor_file_label_testing, testing_samples_per_class, max_total_images)
+		save_descriptor_array(testing_target_array, 'testing_target_'+descriptor_file_label_testing, testing_samples_per_class, max_total_images)
 
 	else:
 
@@ -696,7 +606,10 @@ def main():
 		testing_classification_dict = load_pickle_object_file('testing_classification_dict'+"_"+str(testing_samples_per_class)+"_"+str(max_total_images))
 
 		cheap_display("Loading testing SPM subregions...")
-		testing_subregions = load_file('SPM_'+descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
+		testing_subregions = load_numpy_object_file('SPM_'+descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
+
+		cheap_display("Loading training target array...")
+		testing_target_array = load_numpy_object_file('testing_target_'+descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
 
 	# Scale data
 	testing_descriptors = scale(testing_descriptors)
@@ -777,7 +690,7 @@ if __name__ == '__main__':
 
 	k_neighbors = 5
 	total_classes = 102
-	training_samples_per_class = 2 					 					
+	training_samples_per_class = 1 					 					
 	testing_samples_per_class = 1						
 	max_total_images = 10000
 	number_of_k_means_clusters = 32					#base of codebook

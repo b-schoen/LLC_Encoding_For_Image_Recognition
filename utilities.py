@@ -65,7 +65,7 @@ def save_classification_dict(classification_dict, filename, samples_per_class, m
 
 def save_dictionary(dictionary, filename, samples_per_class, max_total_images, number_of_k_means_clusters):
 
-	filename = filename + str(samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters)
+	filename = filename + "_"+str(samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters)
 
 	f = open(filename, 'w')
 	np.save(f, dictionary)
