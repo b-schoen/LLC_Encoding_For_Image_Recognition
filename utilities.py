@@ -29,10 +29,12 @@ import inspect
 import math
 import cmath
 
+import pickle
+
 # General function to use in place of print (so can redirect output elsewhere or not print at all)
 def display(*some_strings):
 
-	no_print = False
+	no_print = True
 
 	if not no_print:
 
@@ -56,10 +58,14 @@ def describe_array(input_array):
 def line_break():
 	display("---------------------------------------")
 
+def save_classification_dict(classification_dict, filename, samples_per_class, max_total_images):
+
+	with open(filename+"_"+str(samples_per_class)+"_"+str(max_total_images),'wb') as f:
+		pickle.dump(classification_dict,f,pickle.HIGHEST_PROTOCOL)
 
 def save_dictionary(dictionary, filename, samples_per_class, max_total_images, number_of_k_means_clusters):
 
-	filename = filename + "_" + str(samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters)
+	filename = filename + str(samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters)
 
 	f = open(filename, 'w')
 	np.save(f, dictionary)
@@ -73,6 +79,13 @@ def save_descriptor_array(descriptor_array, filename, samples_per_class, max_tot
 	np.save(f, descriptor_array)
 	f.close()
 
+def save_classifier(classifier, filename, samples_per_class, max_total_images,number_of_k_means_clusters):
+
+	filename = filename + "_" + str(samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters)
+
+	with open(filename,'wb') as f:
+		pickle.dump(classifier,f,pickle.HIGHEST_PROTOCOL)
+
 def save_encodings(encodings, filename, samples_per_class, max_total_images, number_of_k_means_clusters):
 
 	filename = filename + "_" + str(samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters)
@@ -81,13 +94,18 @@ def save_encodings(encodings, filename, samples_per_class, max_total_images, num
 	np.save(f, encodings)
 	f.close()
 
-def load_file(filename):
+def load_numpy_object_file(filename):
 
 	f = open(filename, 'r')
 	return_object = np.load(f)
 	f.close()
 
 	return return_object
+
+def load_pickle_object_file(filename):
+
+	with open(filename,'rb') as f:
+		return pickle.load(f)
 
 def prepare_image(image):
 

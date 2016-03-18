@@ -1,8 +1,12 @@
+# -*- coding: utf-8 -*-
+
 #TODO: Dig into modified_skimage.py to directly use histograms mid hog for pooling / normalization (for SPM)
 #TODO: Resolve all other TODOs
 
 #matlab plotting
 #import matplotlib.pyplot as plt
+
+print("Importing packages...")
 
 #images and features
 from skimage.feature import hog, daisy
@@ -21,6 +25,7 @@ from sklearn.preprocessing import scale
 from sklearn.neighbors import NearestNeighbors
 from sklearn.svm import LinearSVC
 from sklearn.datasets import load_iris
+from sklearn.ensemble import BaggingClassifier
 
 #numpy
 from numpy import array
@@ -47,10 +52,13 @@ from utilities import display
 from utilities import cheap_display
 from utilities import describe_array
 from utilities import line_break
+from utilities import save_classification_dict
 from utilities import save_dictionary
 from utilities import save_descriptor_array
 from utilities import save_encodings
-from utilities import load_file
+from utilities import save_classifier
+from utilities import load_numpy_object_file
+from utilities import load_pickle_object_file
 from utilities import prepare_image
 from utilities import flatten_daisy
 from utilities import demo_iris
@@ -62,6 +70,7 @@ from SPM import normalize
 def do_k_means(input_data, clusters):
 
 	cheap_display("Doing k means...")
+	cheap_display(input_data.shape)
 
 	#scale data
 	scaled_data = scale(input_data)
@@ -69,7 +78,7 @@ def do_k_means(input_data, clusters):
 	#get samples and features
 	n_samples, n_features = scaled_data.shape
 
-	kmeans_function = KMeans(init='k-means++', n_clusters=clusters, n_init=1, verbose=0)
+	kmeans_function = KMeans(init='k-means++', n_clusters=clusters, n_init=1, verbose=1)
 
 	# use MiniBatchKMeans for faster performance (smaller batches means managable data size)
 	#	comes at the cost of worse accuracy
@@ -102,25 +111,26 @@ def bench_k_means(estimator, name, data):
 #		larger code vector implicitly encodes spatial information relative to the position window
 def get_hog_descriptor(image_file):
 
-	orientations = 9
+	orientations = 8
 	pixels_per_cell = (8,8)
-	cells_per_block = (2,2)
+	cells_per_block = (4,4)
 
 	image = Image.open(image_file)
 	image = prepare_image(image)
 
 	feature_descriptor = hog(image, orientations=orientations, pixels_per_cell=pixels_per_cell, cells_per_block=cells_per_block)
 
-	#display(feature_descriptor)
-	return feature_descriptor
+	descriptors = [feature_descriptor]
+
+	return descriptors
 
 # From the skimage comments: 
 #		We refer to the normalised block descriptors as Histogram of Oriented Gradient (HOG) descriptors.
 def get_modified_hog_descriptor(image_file):
 
-	orientations = 9
+	orientations = 8
 	pixels_per_cell = (8,8)
-	cells_per_block = (2,2)
+	cells_per_block = (4,4)
 
 	image = Image.open(image_file)
 	image = prepare_image(image)
@@ -130,6 +140,7 @@ def get_modified_hog_descriptor(image_file):
 	descriptors = []
 
 	#NOTE: normalized blocks (x,y) are still (2,2,9), because have histograms for each cell in block (so just raveling and seeing if it works)
+	#NOTE: 36 = 2 * 2 * 9 => total size of these is based on cells in block and orientations
 	for x in xrange(normalised_blocks.shape[0]):
 		for y in xrange(normalised_blocks.shape[1]):
 			descriptors.append(normalised_blocks[x,y].ravel())
@@ -150,7 +161,9 @@ def compare_hog_descriptors(image_file):
 
 	image_modified_hog = get_modified_hog_descriptor(image_file)
 
-	describe_array(image_modified_hog)
+	for descriptor in image_modified_hog:
+
+		describe_array(descriptor)
 
 def run_on_all_images(process_image, image_directory, images_to_sample_per_class, number_to_stop_at, calc_descriptors, testing=False):
 
@@ -244,6 +257,7 @@ def run_on_all_images(process_image, image_directory, images_to_sample_per_class
 
 	# convert return data list to vstacked array all at once, to use less copies
 	if(calc_descriptors):
+		cheap_display("Stacking descriptors...")
 		return_array = np.vstack(return_data_list)
 		describe_array(return_array)
 	else:
@@ -431,32 +445,46 @@ def get_encodings_array(descriptor_array, neigh, dictionary):
 	cheap_display(descriptor_array.shape)
 
 	encoding_count = 0
+	display_progress_every = 1000
 
-	#TODO: Is it rows instead?
 	for column in descriptor_array:
 
-		#REMOVE: Transpose
 		encoding_list.append(np.transpose(get_descriptor_encoding(column, neigh, dictionary)))
 
-		display(encoding_count)
 		encoding_count = encoding_count + 1
+
+		if(encoding_count%display_progress_every)==0:
+			progress = float(encoding_count) / float(descriptor_array.shape[0])
+			cheap_display("Progress on encoding is ",progress," percent")
 
 	return np.squeeze(np.asarray(encoding_list))
 
 def train_classifier(training_data, target):
 
-	cheap_display("Target looks like: ")
+	#NOTE: For final SPM, these will actually be normalized, thus scaled and normalized should give accurate results
+	#		This is probably the problem now, and not worth normalizing without SPM
 
-	describe_array(target)
+	cheap_display("Training classifier...")
+
+	cheap_display("Training data: ")
+	cheap_display(training_data.shape)
+
+	cheap_display("Target: ")
+	cheap_display(target.shape)
+
+	#scale data
+	scaled_training_data = scale(training_data)
+
+	cheap_display("Training data: ")
+	cheap_display(scaled_training_data.shape)
 
 	#This is just reformatting for numpy's sake, not actually 'changing' shape
-	target.reshape(training_data.shape[0],1)
+	target.reshape(scaled_training_data.shape[0],1)
 
-	describe_array(target)
-
-	linear_svc = LinearSVC()
+	linear_svc = LinearSVC(verbose=1)
 	
-	linear_svc.fit(training_data, target)
+	cheap_display("Fitting classifier...")
+	linear_svc.fit(scaled_training_data, target)
 
 	return linear_svc
 
@@ -530,6 +558,7 @@ def main():
 
 	# What to use ------------------------------
 
+	#NOTE: Changing Hog and modified hog not implimented in saved file names yet, so will overwrite each other
 	use_modified_hog = True
 
 	# ------------------------------------------
@@ -544,13 +573,12 @@ def main():
 	training_generate_encodings = True
 	testing_generate_encodings = True
 
-	train_descriptor_based_classifier = True
+	train_encodings_based_classifier = True
+
+	measure_descriptor_based_classification_accuracy = False
+	train_descriptor_based_classifier = False
 
 	# --------------------------------------------
-
-	if (not training_generate_descriptors) or (not testing_generate_descriptors):
-		print("asdfs")
-		raise Exception("Classification dict isn't implemented for modified hog yet")
 
 
 
@@ -562,19 +590,25 @@ def main():
 	#NOTE: both classification dicts match
 	if use_modified_hog:
 		training_descriptors, training_target_array, training_classification_dict = run_on_all_images(get_modified_hog_descriptor, image_directory, training_samples_per_class, max_total_images, training_generate_descriptors)
+		descriptor_file_label = 'modified_hog_descriptors_training'
 	else:
 		training_descriptors, training_target_array, training_classification_dict = run_on_all_images(get_hog_descriptor, image_directory, training_samples_per_class, max_total_images, training_generate_descriptors)
+		descriptor_file_label = 'hog_descriptors_training'
 
 	#save arrays so don't have to recalculate each time
 	if(training_generate_descriptors):
 
-		save_descriptor_array(training_descriptors, 'hog_descriptors_training', training_samples_per_class, max_total_images)
+		save_descriptor_array(training_descriptors, descriptor_file_label, training_samples_per_class, max_total_images)
+		save_classification_dict(training_classification_dict, 'training_classification_dict', training_samples_per_class, max_total_images)
 
 	else:
 
 		#load previously-made array of descriptors
 		cheap_display("Loading training descriptors...")
-		training_descriptors = load_file('hog_descriptors_training_'+str(training_samples_per_class)+'_'+str(max_total_images))
+		training_descriptors = load_numpy_object_file(descriptor_file_label+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
+
+		cheap_display("Loading classification dict...")
+		training_classification_dict = load_pickle_object_file('training_classification_dict'+"_"+str(training_samples_per_class)+"_"+str(max_total_images))
 
 	# Get dictionary
 
@@ -589,7 +623,7 @@ def main():
 
 		#load previously-made dictionary
 		cheap_display("Loading dictionary...")
-		dictionary = load_file('dictionary_'+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
+		dictionary = load_numpy_object_file('dictionary_'+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
 
 	# Fit dictionary
 	cheap_display("Fitting dictionary...")
@@ -609,11 +643,12 @@ def main():
 	else:
 
 		cheap_display("Loading training encodings...")
-		training_encodings = load_file("encodings_training_"+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
+		training_encodings = load_numpy_object_file("encodings_training_"+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
 
 	# Delete large unused objects
 
-	# del training_descriptors
+	if not train_descriptor_based_classifier:
+		del training_descriptors
 
 	#------------------------------------------------------------------------------------------------------------
 
@@ -647,18 +682,25 @@ def main():
 
 	# Generate descriptors
 	cheap_display("Getting testing descriptors...")
-	testing_descriptors,  testing_target_array, testing_classification_dict= run_on_all_images(get_hog_descriptor, image_directory, testing_samples_per_class, max_total_images, testing_generate_descriptors, testing=True)
+	if use_modified_hog:
+		testing_descriptors,  testing_target_array, testing_classification_dict= run_on_all_images(get_modified_hog_descriptor, image_directory, testing_samples_per_class, max_total_images, testing_generate_descriptors, testing=True)
+	else:
+		testing_descriptors,  testing_target_array, testing_classification_dict= run_on_all_images(get_hog_descriptor, image_directory, testing_samples_per_class, max_total_images, testing_generate_descriptors, testing=True)
 
 	#save arrays so don't have to recalculate each time
 	if(testing_generate_descriptors):
 
 		save_descriptor_array(testing_descriptors, 'hog_descriptors_testing', testing_samples_per_class, max_total_images)
+		save_classification_dict(testing_classification_dict, 'testing_classification_dict', testing_samples_per_class, max_total_images)
 
 	else:
 
 		#load previously-made array of descriptors
 		cheap_display("Loading testing descriptors...")
-		testing_descriptors = load_file('hog_descriptors_testing_'+str(testing_samples_per_class)+'_'+str(max_total_images))
+		testing_descriptors = load_numpy_object_file('hog_descriptors_testing_'+str(testing_samples_per_class)+'_'+str(max_total_images))
+
+		cheap_display("Loading classification dict...")
+		testing_classification_dict = load_pickle_object_file('testing_classification_dict'+"_"+str(testing_samples_per_class)+"_"+str(max_total_images))
 
 	# Get encodings
 
@@ -673,7 +715,7 @@ def main():
 	else:
 
 		cheap_display("Loading testing encodings...")
-		testing_encodings = load_file("encodings_testing_"+str(testing_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
+		testing_encodings = load_numpy_object_file("encodings_testing_"+str(testing_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
 
 	# --------------------------------------------------------------------------------------------------------
 
@@ -683,18 +725,43 @@ def main():
 
 	#TODO: Is classification better doing or not doing transpose AFTER encodings (training) are done?
 
+	#TODO: Save and load these classifiers
+
 	# assert that the testing and training classificaiton dictionaries match
 	assert (training_classification_dict == testing_classification_dict)
 
-	encoding_based_classifier = train_classifier(training_encodings, training_target_array)
+	if(train_encodings_based_classifier):
+	
+		cheap_display("Training encoding based classifier: ")
+		encoding_based_classifier = train_classifier(training_encodings, training_target_array)
+		save_classifier(encoding_based_classifier, "classifier_encoding_based", training_samples_per_class, max_total_images,number_of_k_means_clusters)
+
+	else:
+
+		cheap_display("Loading encoding based classifier: ")
+		encoding_based_classifier = load_pickle_object_file("classifier_encoding_based"+ "_" + str(training_samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters))
+
+
+	cheap_display("Getting accuracy for encoding based classifier...")
 	encoding_based_accuracy = get_accuracy(encoding_based_classifier, testing_encodings, testing_target_array, testing_classification_dict)
-	cheap_display("Accuracy for encoding based classifier is: ", accuracy)
+	cheap_display("Accuracy for encoding based classifier is: ", encoding_based_accuracy)
 
-	if(train_descriptor_based_classifier):
+	if(measure_descriptor_based_classification_accuracy):
 
-		descriptor_based_classifier = train_classifier(training_descriptors, training_target_array)
+		if(train_descriptor_based_classifier):
+
+			cheap_display("Training descriptor based classifier: ")
+			descriptor_based_classifier = train_classifier(training_descriptors, training_target_array)
+			save_classifier(descriptor_based_classifier, "classifier_encoding_based", training_samples_per_class, max_total_images,number_of_k_means_clusters)
+
+		else:
+
+			cheap_display("Loading descriptor based classifier: ")
+			descriptor_based_classifier = load_pickle_object_file("classifier_descriptor_based"+ "_" + str(training_samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters))
+
+		cheap_display("Getting accuracy for descriptor based classifier...")
 		descriptor_based_accuracy = get_accuracy(descriptor_based_classifier, testing_descriptors, testing_target_array, testing_classification_dict)
-		cheap_display("Accuracy for descriptor based classifier is: ", accuracy)
+		cheap_display("Accuracy for descriptor based classifier is: ", descriptor_based_accuracy)
 
 	# -------------------------------------------------------------------------------------------------------
 
@@ -711,12 +778,14 @@ if __name__ == '__main__':
 
 	k_neighbors = 5
 	total_classes = 102
-	training_samples_per_class = 5 					 					
-	testing_samples_per_class = 10						
+	training_samples_per_class = 1 					 					
+	testing_samples_per_class = 1						
 	max_total_images = 10000
-	number_of_k_means_clusters = 64					#base of codebook
+	number_of_k_means_clusters = 8					#base of codebook
 
 	main()
+
+	# CURRENTLY ON SEEING IF SCALING DATA IN CLASSIFIER (LIKE IS DONE IN KMEANS) IS WHAT WAS WRONG WITH ENCODING
 
 	#compare_hog_descriptors(test_image)
 
