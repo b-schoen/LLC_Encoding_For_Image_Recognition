@@ -136,7 +136,8 @@ def get_modified_hog_descriptor(image_file):
 	descriptors=np.empty((normalised_blocks.shape[0],normalised_blocks.shape[1],dimension))
 	for x in xrange(normalised_blocks.shape[0]):
 		for y in xrange(normalised_blocks.shape[1]):
-			descriptors[x,y]=normalised_blocks[x,y].ravel()
+			#descriptors[x,y]=normalised_blocks[x,y].ravel()
+			descriptors[x,y]=(normalised_blocks[x,y].ravel()).astype(np.float32)
 
 	return descriptors
 
@@ -514,15 +515,17 @@ def main():
 
 	else:
 
-		#load previously-made array of descriptors
-		cheap_display("Loading training descriptors...")
-		training_descriptors = load_numpy_object_file(descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
+		if(training_generate_encodings):
+
+			#load previously-made array of descriptors
+			cheap_display("Loading training descriptors...")
+			training_descriptors = load_numpy_object_file(descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
+
+			cheap_display("Loading training SPM subregions...")
+			training_subregions = load_numpy_object_file('SPM_'+descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
 
 		cheap_display("Loading training classification dict...")
 		training_classification_dict = load_pickle_object_file('training_classification_dict'+"_"+str(training_samples_per_class)+"_"+str(max_total_images))
-
-		cheap_display("Loading training SPM subregions...")
-		training_subregions = load_numpy_object_file('SPM_'+descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
 
 		cheap_display("Loading training target array...")
 		training_target_array = load_numpy_object_file('training_target_'+descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
@@ -545,6 +548,9 @@ def main():
 		cheap_display("Loading dictionary...")
 		dictionary = load_numpy_object_file('dictionary'+"_"+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
 
+	# Done with descriptors, can delete them
+	del training_descriptors
+
 	# Fit dictionary
 	cheap_display("Fitting dictionary...")
 	neigh = NearestNeighbors(n_neighbors=k_neighbors)
@@ -564,12 +570,6 @@ def main():
 
 		cheap_display("Loading training encodings...")
 		training_encodings = load_numpy_object_file("encodings_training_"+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
-
-	# Delete large unused objects
-
-	if not train_descriptor_based_classifier:
-		del training_descriptors
-		del training_subregions
 
 	#------------------------------------------------------------------------------------------------------------
 
@@ -598,15 +598,17 @@ def main():
 
 	else:
 
-		#load previously-made array of descriptors
-		cheap_display("Loading testing descriptors...")
-		testing_descriptors = load_numpy_object_file(descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
+		if(training_generate_encodings):
+
+			#load previously-made array of descriptors
+			cheap_display("Loading testing descriptors...")
+			testing_descriptors = load_numpy_object_file(descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
+
+			cheap_display("Loading testing SPM subregions...")
+			testing_subregions = load_numpy_object_file('SPM_'+descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
 
 		cheap_display("Loading testing classification dict...")
 		testing_classification_dict = load_pickle_object_file('testing_classification_dict'+"_"+str(testing_samples_per_class)+"_"+str(max_total_images))
-
-		cheap_display("Loading testing SPM subregions...")
-		testing_subregions = load_numpy_object_file('SPM_'+descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
 
 		cheap_display("Loading training target array...")
 		testing_target_array = load_numpy_object_file('testing_target_'+descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
@@ -629,6 +631,7 @@ def main():
 		cheap_display("Loading testing encodings...")
 		testing_encodings = load_numpy_object_file("encodings_testing_"+str(testing_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
 
+
 	# --------------------------------------------------------------------------------------------------------
 
 
@@ -636,8 +639,6 @@ def main():
 	# Train classifier and predict results -----------------------------------------------------------------
 
 	#TODO: Is classification better doing or not doing transpose AFTER encodings (training) are done?
-
-	#TODO: Save and load these classifiers
 
 	# assert that the testing and training classificaiton dictionaries match
 	assert (training_classification_dict == testing_classification_dict)
@@ -658,23 +659,6 @@ def main():
 	encoding_based_accuracy = get_accuracy(encoding_based_classifier, testing_encodings, testing_target_array, testing_classification_dict)
 	cheap_display("Accuracy for encoding based classifier is: ", encoding_based_accuracy)
 
-	if(measure_descriptor_based_classification_accuracy):
-
-		if(train_descriptor_based_classifier):
-
-			cheap_display("Training descriptor based classifier: ")
-			descriptor_based_classifier = train_classifier(training_descriptors, training_target_array)
-			save_classifier(descriptor_based_classifier, "classifier_encoding_based", training_samples_per_class, max_total_images,number_of_k_means_clusters)
-
-		else:
-
-			cheap_display("Loading descriptor based classifier: ")
-			descriptor_based_classifier = load_pickle_object_file("classifier_descriptor_based"+ "_" + str(training_samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters))
-
-		cheap_display("Getting accuracy for descriptor based classifier...")
-		descriptor_based_accuracy = get_accuracy(descriptor_based_classifier, testing_descriptors, testing_target_array, testing_classification_dict)
-		cheap_display("Accuracy for descriptor based classifier is: ", descriptor_based_accuracy)
-
 	# -------------------------------------------------------------------------------------------------------
 
 
@@ -690,10 +674,12 @@ if __name__ == '__main__':
 
 	k_neighbors = 5
 	total_classes = 102
-	training_samples_per_class = 1 					 					
-	testing_samples_per_class = 1						
+	# vary from 5,...,30
+	training_samples_per_class = 5
+	# keep at 30 for all trials		 					
+	testing_samples_per_class = 1					
 	max_total_images = 10000
-	number_of_k_means_clusters = 32					#base of codebook
+	number_of_k_means_clusters = 1024					#base of codebook
 
 	main()
 
