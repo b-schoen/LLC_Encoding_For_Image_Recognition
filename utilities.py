@@ -32,7 +32,7 @@ import cmath
 # General function to use in place of print (so can redirect output elsewhere or not print at all)
 def display(*some_strings):
 
-	no_print = True
+	no_print = False
 
 	if not no_print:
 
@@ -100,7 +100,7 @@ def prepare_image(image):
 	image = image.resize(size)
 
 	#print type(image)
-	display(image.size)
+	#display(image.size)
 
 	image = array(image)
 	image = color.rgb2gray(image)

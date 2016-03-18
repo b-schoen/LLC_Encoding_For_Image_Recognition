@@ -1,3 +1,5 @@
+import Image
+
 import numpy as np
 from scipy import sqrt, pi, arctan2, cos, sin
 from scipy.ndimage import uniform_filter
@@ -181,4 +183,8 @@ def modified_hog(image, orientations=9, pixels_per_cell=(8, 8),
     if visualise:
         return normalised_blocks.ravel(), hog_image
     else:
-        return normalised_blocks.ravel()
+        return normalised_blocks
+
+if __name__ == '__main__':
+
+    pass

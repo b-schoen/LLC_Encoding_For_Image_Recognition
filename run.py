@@ -97,6 +97,7 @@ def bench_k_means(estimator, name, data):
                                       metric='euclidean',
                                       sample_size=sample_size)))'''
 
+# Raveled version of the hog descriptors
 def get_hog_descriptor(image_file):
 
 	orientations = 9
@@ -110,6 +111,38 @@ def get_hog_descriptor(image_file):
 
 	#display(feature_descriptor)
 	return feature_descriptor
+
+# From the skimage comments: 
+#		We refer to the normalised block descriptors as Histogram of Oriented Gradient (HOG) descriptors.
+def get_modified_hog_descriptor(image_file):
+
+	orientations = 9
+	pixels_per_cell = (8,8)
+	cells_per_block = (2,2)
+
+	image = Image.open(image_file)
+	image = prepare_image(image)
+
+	feature_descriptor = modified_hog(image, orientations=orientations, pixels_per_cell=pixels_per_cell, cells_per_block=cells_per_block)
+
+	#display(feature_descriptor)
+	return feature_descriptor
+
+def compare_hog_descriptors(image_file):
+
+	#NOTE: dimension of hog = product of all array dimensions of modified hog
+
+	display("Hog is: ")
+
+	image_hog = get_hog_descriptor(image_file)
+
+	describe_array(image_hog)
+
+	display("Modified hog is: ")
+
+	image_modified_hog = get_modified_hog_descriptor(image_file)
+
+	describe_array(image_modified_hog)
 
 def run_on_all_images(process_image, image_directory, images_to_sample_per_class, number_to_stop_at, calc_descriptors, testing=False):
 
@@ -650,8 +683,9 @@ if __name__ == '__main__':
 	max_total_images = 10000
 	number_of_k_means_clusters = 128					#base of codebook
 
+	#main()
 
-	main()
+	compare_hog_descriptors(test_image)
 
 
 	
