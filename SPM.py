@@ -20,6 +20,8 @@ def pooling(list_of_vectors, type_of_method):
 	#sum of vectors
 	if(type_of_method=="sum"):
 
+		#TODO: Fix 0,1 thing like BRE did with max
+
 		#NOTE: Copy because otherwise numpy goes by reference
 		total_sum = np.copy(list_of_vectors[0])
 
