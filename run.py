@@ -72,19 +72,22 @@ def do_k_means(input_data, clusters):
 	cheap_display("Doing k means...")
 	cheap_display(input_data.shape)
 
+	batch = input_data.shape[0]/100
+	batch = int(batch)
+
 	#scale data
-	scaled_data = scale(input_data)
+	input_data = scale(input_data)
 
 	#get samples and features
-	n_samples, n_features = scaled_data.shape
+	n_samples, n_features = input_data.shape
 
-	kmeans_function = KMeans(init='k-means++', n_clusters=clusters, n_init=1, verbose=1)
+	#kmeans_function = KMeans(init='k-means++', n_clusters=clusters, n_init=1, verbose=1)
 
 	# use MiniBatchKMeans for faster performance (smaller batches means managable data size)
 	#	comes at the cost of worse accuracy
-	# kmeans_function = MiniBatchKMeans(init_size=2*clusters,init='k-means++', n_clusters=clusters, n_init=10, max_no_improvement=10, verbose=1)
+	kmeans_function = MiniBatchKMeans(batch_size=batch, init='k-means++', n_clusters=clusters, n_init=10, max_no_improvement=10, verbose=1)
 
-	return bench_k_means(kmeans_function, name="k-means++", data=scaled_data)
+	return bench_k_means(kmeans_function, name="k-means++", data=input_data)
 
 def bench_k_means(estimator, name, data):
     t0 = time()
@@ -93,18 +96,6 @@ def bench_k_means(estimator, name, data):
     cheap_display("Done k means")
 
     return km.cluster_centers_
-
-    #for additional info
-    '''print('% 9s   %.2fs    %i   %.3f   %.3f   %.3f   %.3f   %.3f    %.3f'
-          % (name, (time() - t0), estimator.inertia_,
-             metrics.homogeneity_score(labels, estimator.labels_),
-             metrics.completeness_score(labels, estimator.labels_),
-             metrics.v_measure_score(labels, estimator.labels_),
-             metrics.adjusted_rand_score(labels, estimator.labels_),
-             metrics.adjusted_mutual_info_score(labels,  estimator.labels_),
-             metrics.silhouette_score(data, estimator.labels_,
-                                      metric='euclidean',
-                                      sample_size=sample_size)))'''
 
 # Raveled version of the hog descriptors
 # From Dalal and Triggs:
@@ -230,7 +221,7 @@ def get_spm_encodings(spm_subregions,neigh,dictionary, number_of_k_means_cluster
 
 	return spm_encodings_array
 
-def run_on_all_images(process_image, image_directory, images_to_sample_per_class, number_to_stop_at, calc_descriptors, testing=False):
+def run_on_all_images(process_image, image_directory, images_to_sample_per_class, number_to_stop_at, calc_descriptors, testing=False, descriptor_only=False):
 
 	cheap_display("Running on all images...")
 
@@ -293,17 +284,21 @@ def run_on_all_images(process_image, image_directory, images_to_sample_per_class
 
 					subregions_list = subregions_list + (subregions,)
 
+					# if we eventually want encodings
+					if not descriptor_only:
 
+						for description in descriptor:
+							return_data_list.append(description)
 
-					#print(descriptors.shape)
-					#print(len(descriptor))
+						#log classification of this images
+						#	Appending outside of the descriptor iterator loop is fine, as descriptors are eventually pooled
+						classification_list.append(class_count)
 
-					for description in descriptor:
-						return_data_list.append(description)
+					else:
 
-					#log classification of this images
-					#	Appending outside of the descriptor iterator loop is fine, as descriptors are eventually pooled
-					classification_list.append(class_count)
+						for description in descriptor:
+							return_data_list.append(description)
+							classification_list.append(class_count)
 
 					#return if reached max images total to process
 					images_processed = images_processed + 1
@@ -393,19 +388,13 @@ def train_classifier(training_data, target):
 	cheap_display("Target: ")
 	cheap_display(target.shape)
 
-	#scale data
-	scaled_training_data = scale(training_data)
-
-	cheap_display("Training data: ")
-	cheap_display(scaled_training_data.shape)
-
 	#This is just reformatting for numpy's sake, not actually 'changing' shape
-	target.reshape(scaled_training_data.shape[0],1)
+	target.reshape(training_data.shape[0],1)
 
 	linear_svc = LinearSVC(verbose=1)
 	
 	cheap_display("Fitting classifier...")
-	linear_svc.fit(scaled_training_data, target)
+	linear_svc.fit(training_data, target)
 
 	return linear_svc
 
@@ -472,6 +461,94 @@ def get_accuracy(classifier, testing_encodings, testing_target_array, testing_cl
 
 	return accuracy
 
+def only_descriptor_main(
+	use_modified_hog,
+	training_generate_descriptors,
+	testing_generate_descriptors,
+	train_descriptor_based_classifier):
+
+	# Generate training -----------------------------------------------------------------------------------
+
+	# Get descriptors
+	cheap_display("Getting training descriptors...")
+
+	#NOTE: both classification dicts match
+	if use_modified_hog:
+		training_subregions, training_descriptors, training_target_array, training_classification_dict = run_on_all_images(get_modified_hog_descriptor, image_directory, training_samples_per_class, max_total_images, training_generate_descriptors, descriptor_only=True)
+		descriptor_file_label_training = 'modified_hog_descriptors_training'
+	else:
+		training_subregions, training_descriptors, training_target_array, training_classification_dict = run_on_all_images(get_hog_descriptor, image_directory, training_samples_per_class, max_total_images, training_generate_descriptors, descriptor_only=True)
+		descriptor_file_label_training = 'hog_descriptors_training'
+
+	#save arrays so don't have to recalculate each time
+	if(training_generate_descriptors):
+
+		save_descriptor_array(training_descriptors, descriptor_file_label_training, training_samples_per_class, max_total_images)
+		save_classification_dict(training_classification_dict, 'training_classification_dict', training_samples_per_class, max_total_images)
+		save_descriptor_array(training_subregions, 'SPM_'+descriptor_file_label_training, training_samples_per_class, max_total_images)
+
+	else:
+
+		#load previously-made array of descriptors
+		cheap_display("Loading training descriptors...")
+		training_descriptors = load_numpy_object_file(descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
+
+		cheap_display("Loading training classification dict...")
+		training_classification_dict = load_pickle_object_file('training_classification_dict'+"_"+str(training_samples_per_class)+"_"+str(max_total_images))
+
+		cheap_display("Loading training SPM subregions...")
+		training_subregions = load_file('SPM_'+descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
+
+	# Scale data
+	training_descriptors = scale(training_descriptors)
+
+	# Generate for testing ---------------------------------------------------------------------------------
+
+	# Generate descriptors
+	cheap_display("Getting testing descriptors...")
+	if use_modified_hog:
+		testing_subregions, testing_descriptors,  testing_target_array, testing_classification_dict= run_on_all_images(get_modified_hog_descriptor, image_directory, testing_samples_per_class, max_total_images, testing_generate_descriptors, testing=True, descriptor_only=True)
+		descriptor_file_label_testing = 'modified_hog_descriptors_testing'
+	else:
+		testing_subregions, testing_descriptors,  testing_target_array, testing_classification_dict= run_on_all_images(get_hog_descriptor, image_directory, testing_samples_per_class, max_total_images, testing_generate_descriptors, testing=True,descriptor_only=True)
+		descriptor_file_label_testing = 'hog_descriptors_testing'
+
+	#save arrays so don't have to recalculate each time
+	if(testing_generate_descriptors):
+
+		save_descriptor_array(testing_descriptors, descriptor_file_label_testing, testing_samples_per_class, max_total_images)
+		save_classification_dict(testing_classification_dict, 'testing_classification_dict', testing_samples_per_class, max_total_images)
+		save_descriptor_array(testing_subregions, 'SPM_'+descriptor_file_label_testing, testing_samples_per_class, max_total_images)
+
+	else:
+
+		#load previously-made array of descriptors
+		cheap_display("Loading testing descriptors...")
+		testing_descriptors = load_numpy_object_file(descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
+
+		cheap_display("Loading testing classification dict...")
+		testing_classification_dict = load_pickle_object_file('testing_classification_dict'+"_"+str(testing_samples_per_class)+"_"+str(max_total_images))
+
+		cheap_display("Loading testing SPM subregions...")
+		testing_subregions = load_file('SPM_'+descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
+
+	# Train classifier -------------------------------------------------------------------------
+
+	if(train_descriptor_based_classifier):
+
+			cheap_display("Training descriptor based classifier: ")
+			descriptor_based_classifier = train_classifier(training_descriptors, training_target_array)
+			save_classifier(descriptor_based_classifier, "classifier_encoding_based", training_samples_per_class, max_total_images,number_of_k_means_clusters)
+
+	else:
+
+		cheap_display("Loading descriptor based classifier: ")
+		descriptor_based_classifier = load_pickle_object_file("classifier_descriptor_based"+ "_" + str(training_samples_per_class)+"_"+str(max_total_images)+"_"+str(number_of_k_means_clusters))
+
+	cheap_display("Getting accuracy for descriptor based classifier...")
+	descriptor_based_accuracy = get_accuracy(descriptor_based_classifier, testing_descriptors, testing_target_array, testing_classification_dict)
+	cheap_display("Accuracy for descriptor based classifier is: ", descriptor_based_accuracy)
+
 
 def main():
 
@@ -496,10 +573,17 @@ def main():
 
 	train_encodings_based_classifier = True
 
+	# --------------------------------------------
+
+	# If we only want to use descriptors, no encoding, try this -------------------
 	measure_descriptor_based_classification_accuracy = False
 	train_descriptor_based_classifier = False
 
-	# --------------------------------------------
+	if(measure_descriptor_based_classification_accuracy):
+		only_descriptor_main(use_modified_hog,training_generate_descriptors,testing_generate_descriptors,train_descriptor_based_classifier)
+		return
+
+	# -------------------------------------------------------------------------------
 
 
 
@@ -535,13 +619,16 @@ def main():
 		cheap_display("Loading training SPM subregions...")
 		training_subregions = load_file('SPM_'+descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
 
+	# Scale data
+	training_descriptors = scale(training_descriptors)
+
 	# Get dictionary
 
 	#run only if haven't already generated descriptors 
 	cheap_display("Getting dictionary...")
 	if(training_generate_dictionary):
 
-		dictionary = do_k_means((training_descriptors), number_of_k_means_clusters)
+		dictionary = do_k_means(training_descriptors, number_of_k_means_clusters)
 
 		save_dictionary(dictionary, 'dictionary', training_samples_per_class, max_total_images, number_of_k_means_clusters)
 	else:
@@ -578,28 +665,6 @@ def main():
 	#------------------------------------------------------------------------------------------------------------
 
 
-	'''#Codebook optimization -------------------------------------------------------------------------------------
-
-	batch_size = 5
-	batch_of_descriptors = descriptor_array[:batch_size,:]
-	#batch_of_descriptors=descriptor_array
-
-	optimize_codebook(dictionary, batch_of_descriptors, neigh)
-
-	#-----------------------------------------------------------------------------------------------------------'''
-
-
-
-
-	#TODO: Implement SPM with encodings
-
-	#TODO: Pool and normalize SPM results
-
-	#TODO: Use SPM results in classifier
-
-	#Using approximated LLC encodings (skipping SPM step) for classifier
-	#		=> Don't need to do pooling or normalization
-
 	
 
 
@@ -632,6 +697,9 @@ def main():
 
 		cheap_display("Loading testing SPM subregions...")
 		testing_subregions = load_file('SPM_'+descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
+
+	# Scale data
+	testing_descriptors = scale(testing_descriptors)
 
 	# Get encodings
 
@@ -709,10 +777,10 @@ if __name__ == '__main__':
 
 	k_neighbors = 5
 	total_classes = 102
-	training_samples_per_class = 1 					 					
+	training_samples_per_class = 2 					 					
 	testing_samples_per_class = 1						
 	max_total_images = 10000
-	number_of_k_means_clusters = 8					#base of codebook
+	number_of_k_means_clusters = 32					#base of codebook
 
 	main()
 
