@@ -183,7 +183,8 @@ def modified_hog(image, orientations=9, pixels_per_cell=(8, 8),
     if visualise:
         return normalised_blocks.ravel(), hog_image
     else:
-        return normalised_blocks
+        #return orientation_histogram
+        return normalized_blocks
 
 if __name__ == '__main__':
 

@@ -98,6 +98,8 @@ def bench_k_means(estimator, name, data):
                                       sample_size=sample_size)))'''
 
 # Raveled version of the hog descriptors
+# From Dalal and Triggs:
+#		larger code vector implicitly encodes spatial information relative to the position window
 def get_hog_descriptor(image_file):
 
 	orientations = 9
@@ -518,13 +520,19 @@ def main():
 
 	#TODO: Generates taking in these parameters
 
-	training_generate_descriptors = False
-	testing_generate_descriptors = False
+	# What to generate --------------------------
+
+	training_generate_descriptors = True
+	testing_generate_descriptors = True
 
 	training_generate_dictionary = True
 
 	training_generate_encodings = True
 	testing_generate_encodings = True
+
+	train_descriptor_based_classifier = True
+
+	# --------------------------------------------
 
 
 
@@ -584,7 +592,7 @@ def main():
 
 	# Delete large unused objects
 
-	del training_descriptors
+	# del training_descriptors
 
 	#------------------------------------------------------------------------------------------------------------
 
@@ -654,14 +662,18 @@ def main():
 
 	#TODO: Is classification better doing or not doing transpose AFTER encodings (training) are done?
 
-	classifier = train_classifier(training_encodings, training_target_array)
-
 	# assert that the testing and training classificaiton dictionaries match
 	assert (training_classification_dict == testing_classification_dict)
 
-	accuracy = get_accuracy(classifier, testing_encodings, testing_target_array, testing_classification_dict)
+	encoding_based_classifier = train_classifier(training_encodings, training_target_array)
+	encoding_based_accuracy = get_accuracy(encoding_based_classifier, testing_encodings, testing_target_array, testing_classification_dict)
+	cheap_display("Accuracy for encoding based classifier is: ", accuracy)
 
-	cheap_display("Accuracy is: ", accuracy)
+	if(train_descriptor_based_classifier):
+
+		descriptor_based_classifier = train_classifier(training_descriptors, training_target_array)
+		descriptor_based_accuracy = get_accuracy(descriptor_based_classifier, testing_descriptors, testing_target_array, testing_classification_dict)
+		cheap_display("Accuracy for descriptor based classifier is: ", accuracy)
 
 	# -------------------------------------------------------------------------------------------------------
 
@@ -678,14 +690,14 @@ if __name__ == '__main__':
 
 	k_neighbors = 5
 	total_classes = 102
-	training_samples_per_class = 10 					 					
+	training_samples_per_class = 5 					 					
 	testing_samples_per_class = 10						
 	max_total_images = 10000
-	number_of_k_means_clusters = 128					#base of codebook
+	number_of_k_means_clusters = 64					#base of codebook
 
-	#main()
+	main()
 
-	compare_hog_descriptors(test_image)
+	#compare_hog_descriptors(test_image)
 
 
 	
