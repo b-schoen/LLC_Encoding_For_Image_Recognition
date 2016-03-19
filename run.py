@@ -22,6 +22,8 @@ from sklearn.cluster import MiniBatchKMeans
 from sklearn.datasets import load_digits
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
+from sklearn.preprocessing import normalize
+from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import NearestNeighbors
 from sklearn.svm import LinearSVC
 from sklearn.datasets import load_iris
@@ -65,18 +67,22 @@ from utilities import demo_iris
 
 # functions from SPM.py
 from SPM import pooling
-from SPM import normalize
 
 def do_k_means(input_data, clusters):
 
 	cheap_display("Doing k means...")
 	cheap_display(input_data.shape)
 
-	batch = input_data.shape[0]/100
+	#batch = input_data.shape[0]/100
+	batch_factor = 10
+	batch = batch_factor*clusters
 	batch = int(batch)
 
+	#normalize data
+	normalize(input_data,axis=0,copy=False)
+
 	#scale data
-	input_data = scale(input_data)
+	#input_data = scale(input_data)
 
 	#get samples and features
 	n_samples, n_features = input_data.shape
@@ -85,7 +91,7 @@ def do_k_means(input_data, clusters):
 
 	# use MiniBatchKMeans for faster performance (smaller batches means managable data size)
 	#	comes at the cost of worse accuracy
-	kmeans_function = MiniBatchKMeans(batch_size=batch, init='k-means++', n_clusters=clusters, n_init=10, max_no_improvement=10, verbose=1)
+	kmeans_function = MiniBatchKMeans(batch_size=batch, init='k-means++', n_clusters=clusters, n_init=10, max_no_improvement=10, verbose=1, reassignment_ratio=0)
 
 	return bench_k_means(kmeans_function, name="k-means++", data=input_data)
 
@@ -118,6 +124,8 @@ def get_hog_descriptor(image_file):
 # From the skimage comments: 
 #		We refer to the normalised block descriptors as Histogram of Oriented Gradient (HOG) descriptors.
 def get_modified_hog_descriptor(image_file):
+
+	#NOTE: Parameters are correct and result in same #dims as HOG descriptors used in paper
 
 	orientations = 8
 	pixels_per_cell = (8,8)
@@ -202,15 +210,15 @@ def get_spm_encodings(spm_subregions,neigh,dictionary, number_of_k_means_cluster
 		pooled_1=[]
 		pooled_2=[]
 		for sub in img:
-			#print(sub.shape)
 			#describe_array(sub)
 			pooled_1.append(pooling(get_encodings_list(sub,neigh,dictionary,number_of_k_means_clusters), 'max'))
 		#print(pooled_1)
 		for i in range(0,4):
 			pooled_2.append(pooling(pooled_1[(4*i):(4*i)+3], 'max'))
-			#rint(i)
-		pooling_result=pooling(pooled_2,'max')
-		encoding = normalize(pooling_result, 'l_2')
+		#	#rint(i)
+		#pooling_result=pooling(pooled_1,'max')
+		#encoding = normalize(pooling_result, 'l_2')
+		encoding=pooling(pooled_2,'max')
 		spm_encodings.append(encoding)
 		#print(len(encoding))
 		#print('encoded an image')
@@ -353,7 +361,6 @@ def find_local_basis(descriptor, neigh, dictionary):
 def get_descriptor_encoding(descriptor, neigh, dictionary, number_of_k_means_clusters):
 
 	xi = descriptor.reshape(1,-1)
-	#print(len(descriptor))
 	ind, bi = find_local_basis(xi, neigh, dictionary)
 	ci = np.linalg.lstsq(np.transpose(bi),np.transpose(xi))[0] #k-length encoding
 
@@ -395,7 +402,9 @@ def train_classifier(training_data, target):
 	#This is just reformatting for numpy's sake, not actually 'changing' shape
 	target.reshape(training_data.shape[0],1)
 
-	linear_svc = LinearSVC(verbose=1)
+	penalty_parameter = 1
+
+	linear_svc = LinearSVC(C=penalty_parameter,verbose=1)
 	
 	cheap_display("Fitting classifier...")
 	linear_svc.fit(training_data, target)
@@ -428,7 +437,11 @@ def get_predicted_class(classifier, encoding, classification_dict):
 	# get prediction
 	#NOTE: Using only for now while passing one in at a time, can probably hugely speed up by doing all at once
 	#		Can probably just put in raw mulitple encodings, will be appropriate shape
-	prediction = int(classifier.predict(encoding.reshape(1,-1))[0])
+	encoding = encoding.reshape(1,-1)
+
+	prediction = classifier.predict(encoding)
+
+	prediction = int(prediction[0])
 
 	class_instance = classification_dict[prediction]
 
@@ -443,6 +456,7 @@ def get_actual_class(encoding_index, target_array, classification_dict):
 	 return class_instance
 
 def get_accuracy(classifier, testing_encodings, testing_target_array, testing_classification_dict):
+
 
 	hit_count = 0
 	total_count = 0
@@ -461,10 +475,12 @@ def get_accuracy(classifier, testing_encodings, testing_target_array, testing_cl
 
 		total_count = total_count + 1
 
+	cheap_display("Total hits: ",hit_count)
+	cheap_display("Total images: ",total_count)
+
 	accuracy = float(hit_count) / float(total_count)
 
 	return accuracy
-
 
 def main():
 
@@ -479,13 +495,13 @@ def main():
 
 	# What to generate --------------------------
 
-	training_generate_descriptors = True
-	testing_generate_descriptors = True
+	training_generate_descriptors = False
+	testing_generate_descriptors = False #Stays false when testing # is constant
 
-	training_generate_dictionary = True
+	training_generate_dictionary = False
 
-	training_generate_encodings = True
-	testing_generate_encodings = True
+	training_generate_encodings = False
+	testing_generate_encodings = False
 
 	train_encodings_based_classifier = True
 
@@ -524,14 +540,27 @@ def main():
 			cheap_display("Loading training SPM subregions...")
 			training_subregions = load_numpy_object_file('SPM_'+descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
 
+		else:
+
+			training_descriptors = np.empty([1,1])
+			training_subregions = np.empty([1,1])
+
 		cheap_display("Loading training classification dict...")
 		training_classification_dict = load_pickle_object_file('training_classification_dict'+"_"+str(training_samples_per_class)+"_"+str(max_total_images))
 
 		cheap_display("Loading training target array...")
 		training_target_array = load_numpy_object_file('training_target_'+descriptor_file_label_training+"_"+str(training_samples_per_class)+'_'+str(max_total_images))
 
+	print("Training descriptors shape: ")
+	print(training_descriptors.shape)
+
+	print("Training subregions shape: ")
+	print(training_subregions.shape)
+
 	# Scale data
-	training_descriptors = scale(training_descriptors)
+	data_scaler = StandardScaler()
+	data_scaler.fit(training_descriptors)
+	training_descriptors = data_scaler.transform(training_descriptors)
 
 	# Get dictionary
 
@@ -548,12 +577,10 @@ def main():
 		cheap_display("Loading dictionary...")
 		dictionary = load_numpy_object_file('dictionary'+"_"+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
 
-	# Done with descriptors, can delete them
-	del training_descriptors
-
 	# Fit dictionary
 	cheap_display("Fitting dictionary...")
 	neigh = NearestNeighbors(n_neighbors=k_neighbors)
+	cheap_display(dictionary.shape)
 	neigh.fit(dictionary)
 
 	# Get encodings
@@ -570,6 +597,10 @@ def main():
 
 		cheap_display("Loading training encodings...")
 		training_encodings = load_numpy_object_file("encodings_training_"+str(training_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
+
+	# Delete large unused objects
+	del training_descriptors
+	del training_subregions
 
 	#------------------------------------------------------------------------------------------------------------
 
@@ -598,7 +629,7 @@ def main():
 
 	else:
 
-		if(training_generate_encodings):
+		if(testing_generate_encodings):
 
 			#load previously-made array of descriptors
 			cheap_display("Loading testing descriptors...")
@@ -607,14 +638,16 @@ def main():
 			cheap_display("Loading testing SPM subregions...")
 			testing_subregions = load_numpy_object_file('SPM_'+descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
 
+		else:
+
+			testing_descriptors = np.empty([1,1])
+			testing_subregions = np.empty([1,1])
+
 		cheap_display("Loading testing classification dict...")
 		testing_classification_dict = load_pickle_object_file('testing_classification_dict'+"_"+str(testing_samples_per_class)+"_"+str(max_total_images))
 
 		cheap_display("Loading training target array...")
 		testing_target_array = load_numpy_object_file('testing_target_'+descriptor_file_label_testing+"_"+str(testing_samples_per_class)+'_'+str(max_total_images))
-
-	# Scale data
-	testing_descriptors = scale(testing_descriptors)
 
 	# Get encodings
 
@@ -631,6 +664,10 @@ def main():
 		cheap_display("Loading testing encodings...")
 		testing_encodings = load_numpy_object_file("encodings_testing_"+str(testing_samples_per_class)+'_'+str(max_total_images)+'_'+str(number_of_k_means_clusters))
 
+	# Delete large unused objects
+	del testing_descriptors
+	del testing_subregions
+
 
 	# --------------------------------------------------------------------------------------------------------
 
@@ -642,6 +679,17 @@ def main():
 
 	# assert that the testing and training classificaiton dictionaries match
 	assert (training_classification_dict == testing_classification_dict)
+
+
+	# normalize encodings for classifier
+	normalize(training_encodings,axis=0,copy=False)
+	normalize(testing_encodings,axis=0,copy=False)
+
+	# scale encodings
+	training_encodings = data_scaler.transform(training_encodings)
+	testing_encodings = data_scaler.transform(testing_encodings)
+	#testing_encodings = scale(testing_encodings)
+	
 
 	if(train_encodings_based_classifier):
 	
@@ -656,8 +704,10 @@ def main():
 
 
 	cheap_display("Getting accuracy for encoding based classifier...")
-	encoding_based_accuracy = get_accuracy(encoding_based_classifier, testing_encodings, testing_target_array, testing_classification_dict)
-	cheap_display("Accuracy for encoding based classifier is: ", encoding_based_accuracy)
+	encoding_based_accuracy_different = get_accuracy(encoding_based_classifier, testing_encodings, testing_target_array, testing_classification_dict)
+	encoding_based_accuracy_same = get_accuracy(encoding_based_classifier, training_encodings, training_target_array, testing_classification_dict)
+	cheap_display("Accuracy for encoding based classifier (different) is: ", encoding_based_accuracy_different)
+	cheap_display("Accuracy for encoding based classifier (same) is: ", encoding_based_accuracy_same)
 
 	# -------------------------------------------------------------------------------------------------------
 
@@ -675,14 +725,11 @@ if __name__ == '__main__':
 	k_neighbors = 5
 	total_classes = 102
 	# vary from 5,...,30
-	training_samples_per_class = 5
+	training_samples_per_class = 2
 	# keep at 30 for all trials		 					
 	testing_samples_per_class = 1					
 	max_total_images = 10000
-	number_of_k_means_clusters = 1024					#base of codebook
+	number_of_k_means_clusters = 128					#base of codebook
 
 	main()
-
-
-	
 	
