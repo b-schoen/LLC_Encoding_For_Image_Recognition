@@ -74,7 +74,7 @@ def do_k_means(input_data, clusters):
 	cheap_display(input_data.shape)
 
 	#batch = input_data.shape[0]/100
-	batch_factor = 10
+	batch_factor = 3
 	batch = batch_factor*clusters
 	batch = int(batch)
 
@@ -495,13 +495,13 @@ def main():
 
 	# What to generate --------------------------
 
-	training_generate_descriptors = False
-	testing_generate_descriptors = False #Stays false when testing # is constant
+	training_generate_descriptors = True
+	testing_generate_descriptors = True #Stays false when testing # is constant
 
-	training_generate_dictionary = False
+	training_generate_dictionary = True
 
-	training_generate_encodings = False
-	testing_generate_encodings = False
+	training_generate_encodings = True
+	testing_generate_encodings = True
 
 	train_encodings_based_classifier = True
 
@@ -558,9 +558,7 @@ def main():
 	print(training_subregions.shape)
 
 	# Scale data
-	data_scaler = StandardScaler()
-	data_scaler.fit(training_descriptors)
-	training_descriptors = data_scaler.transform(training_descriptors)
+	training_descriptors =scale(training_descriptors)
 
 	# Get dictionary
 
@@ -686,6 +684,8 @@ def main():
 	normalize(testing_encodings,axis=0,copy=False)
 
 	# scale encodings
+	data_scaler=StandardScaler()
+	data_scaler.fit(training_encodings)
 	training_encodings = data_scaler.transform(training_encodings)
 	testing_encodings = data_scaler.transform(testing_encodings)
 	#testing_encodings = scale(testing_encodings)
@@ -729,7 +729,7 @@ if __name__ == '__main__':
 	# keep at 30 for all trials		 					
 	testing_samples_per_class = 1					
 	max_total_images = 10000
-	number_of_k_means_clusters = 128					#base of codebook
+	number_of_k_means_clusters = 1024					#base of codebook
 
 	main()
 	
